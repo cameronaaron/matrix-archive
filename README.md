@@ -1,31 +1,53 @@
-# Matrix Archive Tools (Go Version)
+# Matrix Archive Tools
 
-Import messages from a matrix.org room, for research, archival, and preservation.
+Import messages from Matrix rooms for research, archival, and preservation.
 
-This is a Go port of the original Python version, using the [matrix-go](https://github.com/mautrix/go) library for Matrix client functionality.
+A professional Go application using idiomatic project structure and the [mautrix-go](https://github.com/mautrix/go) library for Matrix client functionality.
 
-Developed at [Dinacon 2018](https://www.dinacon.org), for use by the documentation team.
+Originally developed at [Dinacon 2018](https://www.dinacon.org) for use by the documentation team.
 
-Use this responsibly and ethically. Don't re-publish people's messages without their knowledge and consent.
+⚠️ **Use this responsibly and ethically.** Don't re-publish people's messages without their knowledge and consent.
 
-## Setup
+## Project Structure
 
-### Prerequisites
+```
+matrix-archive/
+├── cmd/matrix-archive/     # Main application entry point
+├── lib/                    # Core library code (reusable)
+├── internal/beeperapi/     # Beeper API client (internal use only)
+├── tests/                  # Test suite
+├── templates/              # Export templates
+├── go.mod                  # Go module definition
+├── go.sum                  # Go module checksums
+├── Makefile               # Build and test automation
+└── README.md              # This file
+```
+
+This follows Go's standard project layout conventions for professional applications.
+
+## Prerequisites
 
 - Go 1.21 or later
 - MongoDB (local installation or remote instance)
 
-### Installation
+## Installation
 
-1. Clone this repository
-2. Install dependencies:
-   ```bash
-   go mod download
-   ```
-3. Build the application:
-   ```bash
-   go build -o matrix-archive
-   ```
+### From Source
+
+```bash
+git clone https://github.com/osteele/matrix-archive.git
+cd matrix-archive
+go build ./cmd/matrix-archive
+```
+
+### Build and Install
+
+```bash
+make build          # Build the binary
+make install        # Install to $GOPATH/bin
+make test           # Run the test suite
+make coverage       # Run tests with coverage
+```
 
 ### Environment Variables
 

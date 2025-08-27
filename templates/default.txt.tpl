@@ -1,13 +1,73 @@
-{% for message in messages -%}
-{%- set content = message.content -%}
-From {{ message.sender }}
-Date {{ message.timestamp }}
-{% if content.msgtype == 'm.text' %}
-{{ content.body }}
-{%- elif content.msgtype == 'm.image' -%}
-Image: {{ content.url }}
-{%- else -%}
-Unknown type: {{ content.msgtype }}
-{%- endif %}
----
-{% endfor %}
+{{range .messages -}}
+================================================================================
+From: {{.Sender}}
+Date: {{.Timestamp.Format "2006-01-02 15:04:05"}}
+Event ID: {{.EventID}}
+{{$msgtype := index .Content "msgtype" -}}
+{{if $msgtype -}}
+Type: {{$msgtype}}
+
+{{if eq $msgtype "m.text" -}}
+{{$body := index .Content "body" -}}
+{{if $body -}}
+{{$body}}
+{{end -}}
+{{else if eq $msgtype "m.image" -}}
+{{$body := index .Content "body" -}}
+{{$url := index .Content "url" -}}
+{{if $body -}}
+Caption: {{$body}}
+{{end -}}
+{{if $url -}}
+Image URL: {{$url}}
+{{end -}}
+{{else if eq $msgtype "m.video" -}}
+{{$body := index .Content "body" -}}
+{{$url := index .Content "url" -}}
+{{if $body -}}
+Caption: {{$body}}
+{{end -}}
+{{if $url -}}
+Video URL: {{$url}}
+{{end -}}
+{{else if eq $msgtype "m.file" -}}
+{{$body := index .Content "body" -}}
+{{$url := index .Content "url" -}}
+{{if $body -}}
+Filename: {{$body}}
+{{end -}}
+{{if $url -}}
+File URL: {{$url}}
+{{end -}}
+{{else if eq $msgtype "m.audio" -}}
+{{$body := index .Content "body" -}}
+{{$url := index .Content "url" -}}
+{{if $body -}}
+Caption: {{$body}}
+{{end -}}
+{{if $url -}}
+Audio URL: {{$url}}
+{{end -}}
+{{else if eq $msgtype "m.notice" -}}
+{{$body := index .Content "body" -}}
+{{if $body -}}
+Notice: {{$body}}
+{{end -}}
+{{else -}}
+{{$body := index .Content "body" -}}
+{{if $body -}}
+{{$body}}
+{{else -}}
+[Unknown message type: {{$msgtype}}]
+{{end -}}
+{{end -}}
+{{else -}}
+{{$body := index .Content "body" -}}
+{{if $body -}}
+{{$body}}
+{{else -}}
+[No message content]
+{{end -}}
+{{end -}}
+
+{{end}}

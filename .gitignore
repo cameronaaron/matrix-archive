@@ -1,6 +1,76 @@
+# Build outputs
+/cmd/matrix-archive/matrix-archive
+/bin/matrix-archive
+matrix-archive
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test outputs and artifacts
+coverage.html
+coverage.out
+test-export.json
+*.log
+images_test/
+
+# Download directories
 thumbnails/
 images/
+
+# Environment files
+.env
+.env.local
+
+# Database files
+*.db
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Python artifacts (if any)
 __pycache__/
+*.pyc
+*.pyo
+
+# Temporary files
+*.tmp
+*.temp
+check_messages.js
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Go temporary files
+*.test
+
+# Documentation artifacts
 BEEPER-GUIDE.md
 BEEPER-INTEGRATION-SUMMARY.md
 CONVERSION-SUMMARY.md
+E2E_TEST_REPORT.md
+PRODUCTION_FIXES_COMPLETE.md
+
+# Backup files
+*.bak
+*.backup
+*~
+
+# Node.js (if any)
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Generated binaries and vendor
+vendor/
