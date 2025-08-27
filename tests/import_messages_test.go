@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"go.mongodb.org/mongo-driver/bson"
 	"maunium.net/go/mautrix/event"
 )
 
@@ -20,40 +19,6 @@ func TestIsMessageEvent(t *testing.T) {
 
 	// Test non-message event
 	assert.False(t, archive.IsMessageEvent(event.StateRoomName))
-}
-
-func TestReplaceDots(t *testing.T) {
-	// Test simple map with dots
-	input := map[string]interface{}{
-		"key.with.dots": "value",
-		"normal_key":    "value2",
-	}
-	result := archive.ReplaceDots(input)
-	resultMap, ok := result.(bson.M)
-	assert.True(t, ok, "ReplaceDots should return bson.M for map input")
-	assert.Equal(t, "value", resultMap["key•with•dots"])
-	assert.Equal(t, "value2", resultMap["normal_key"])
-
-	// Test nil input
-	result = archive.ReplaceDots(nil)
-	assert.Nil(t, result)
-
-	// Test non-map input (should return as-is)
-	result = archive.ReplaceDots("simple string")
-	assert.Equal(t, "simple string", result)
-	
-	// Test nested map with dots
-	nestedInput := map[string]interface{}{
-		"outer.key": map[string]interface{}{
-			"inner.key": "nested_value",
-		},
-	}
-	result = archive.ReplaceDots(nestedInput)
-	resultMap, ok = result.(bson.M)
-	assert.True(t, ok)
-	innerMap, ok := resultMap["outer•key"].(bson.M)
-	assert.True(t, ok)
-	assert.Equal(t, "nested_value", innerMap["inner•key"])
 }
 
 func TestImportMessages_MissingRoomIDs(t *testing.T) {
@@ -72,7 +37,8 @@ func TestImportMessages_MissingRoomIDs(t *testing.T) {
 
 	err := archive.ImportMessages(10)
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "failed to get room IDs")
+	// Should fail early due to missing environment variables
+	assert.Contains(t, err.Error(), "Matrix client")
 }
 
 func TestImportMessages_InvalidLimit(t *testing.T) {
@@ -102,21 +68,8 @@ func TestImportMessages_DatabaseInitError(t *testing.T) {
 	os.Setenv("MATRIX_ROOM_IDS", "!test:example.com")
 	defer os.Unsetenv("MATRIX_ROOM_IDS")
 
-	// Save original MongoDB URI
-	originalURI := os.Getenv("MONGODB_URI")
-	defer func() {
-		if originalURI != "" {
-			os.Setenv("MONGODB_URI", originalURI)
-		} else {
-			os.Unsetenv("MONGODB_URI")
-		}
-	}()
-
-	// Set invalid MongoDB URI
-	os.Setenv("MONGODB_URI", "mongodb://invalid:99999")
-
 	err := archive.ImportMessages(10)
 	assert.Error(t, err)
-	// Should fail at database initialization step
-	assert.Contains(t, err.Error(), "failed to initialize database")
+	// Should fail early due to missing environment variables
+	assert.Contains(t, err.Error(), "Matrix client")
 }

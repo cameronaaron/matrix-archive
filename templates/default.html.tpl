@@ -97,7 +97,7 @@
 <div class="message">
     <div class="message-header">
         <span class="sender">{{.Sender}}</span>
-        <span class="timestamp">{{.Timestamp.Format "2006-01-02 15:04:05"}}</span>
+        <span class="timestamp">{{formatTime .Timestamp}}</span>
     </div>
     
     {{$msgtype := index .Content "msgtype" -}}
@@ -172,8 +172,6 @@
             <div class="error">No message content found</div>
         {{end -}}
     {{end -}}
-    
-    <div class="event-id">Event ID: {{.EventID}}</div>
 </div>
 {{end}}
 

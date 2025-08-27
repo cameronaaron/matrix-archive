@@ -9,17 +9,15 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-
-	"go.mongodb.org/mongo-driver/bson"
 )
 
 // downloadImages downloads images from messages to a local directory
 func DownloadImages(outputDir string, thumbnails bool) error {
-	// Initialize database connection
-	if err := InitMongoDB(); err != nil {
+	// Initialize database connection with DuckDB
+	if err := InitDuckDB(); err != nil {
 		return fmt.Errorf("failed to initialize database: %w", err)
 	}
-	defer CloseMongoDB()
+	defer CloseDatabase()
 
 	// Determine output directory
 	if outputDir == "" {
@@ -35,22 +33,21 @@ func DownloadImages(outputDir string, thumbnails bool) error {
 		return fmt.Errorf("failed to create output directory: %w", err)
 	}
 
-	// Query image messages from database
-	collection := GetMessagesCollection()
-	filter := bson.M{"content.msgtype": "m.image"}
-
-	cursor, err := collection.Find(context.Background(), filter)
+	// Query all messages from DuckDB
+	messages, err := GetDatabase().GetMessages(context.Background(), nil, 0, 0)
 	if err != nil {
-		return fmt.Errorf("failed to query image messages: %w", err)
-	}
-	defer cursor.Close(context.Background())
-
-	var messages []Message
-	if err := cursor.All(context.Background(), &messages); err != nil {
-		return fmt.Errorf("failed to decode messages: %w", err)
+		return fmt.Errorf("failed to query messages: %w", err)
 	}
 
-	if len(messages) == 0 {
+	// Filter for image messages
+	var imageMessages []*Message
+	for _, msg := range messages {
+		if msg.IsImage() {
+			imageMessages = append(imageMessages, msg)
+		}
+	}
+
+	if len(imageMessages) == 0 {
 		fmt.Println("No image messages found")
 		return nil
 	}
@@ -62,9 +59,9 @@ func DownloadImages(outputDir string, thumbnails bool) error {
 	}
 
 	// Filter messages to only download new ones
-	var newMessages []Message
-	for _, msg := range messages {
-		stem := GetDownloadStem(msg, thumbnails)
+	var newMessages []*Message
+	for _, msg := range imageMessages {
+		stem := GetDownloadStem(*msg, thumbnails)
 		if stem == "" {
 			continue
 		}
@@ -73,7 +70,7 @@ func DownloadImages(outputDir string, thumbnails bool) error {
 		}
 	}
 
-	skipCount := len(messages) - len(newMessages)
+	skipCount := len(imageMessages) - len(newMessages)
 	if skipCount > 0 {
 		noun := "thumbnails"
 		if !thumbnails {
@@ -144,7 +141,7 @@ func GetDownloadStem(msg Message, preferThumbnails bool) string {
 }
 
 // runDownloads downloads images from the message list
-func runDownloads(messages []Message, downloadDir string, preferThumbnails bool) error {
+func runDownloads(messages []*Message, downloadDir string, preferThumbnails bool) error {
 	client := &http.Client{}
 
 	for _, msg := range messages {
@@ -204,7 +201,7 @@ func runDownloads(messages []Message, downloadDir string, preferThumbnails bool)
 		}
 
 		// Create filename
-		stem := GetDownloadStem(msg, preferThumbnails)
+		stem := GetDownloadStem(*msg, preferThumbnails)
 		filename := filepath.Join(downloadDir, stem+ext)
 
 		// Create directory for file if needed

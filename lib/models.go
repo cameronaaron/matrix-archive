@@ -1,23 +1,43 @@
 package archive
 
 import (
+	"encoding/json"
 	"regexp"
+	"strings"
 	"time"
-
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
-// Message represents a Matrix message stored in MongoDB
+// Message represents a Matrix message stored in the database
 type Message struct {
-	ID          primitive.ObjectID `bson:"_id,omitempty" json:"id,omitempty"`
-	RoomID      string             `bson:"room_id" json:"room_id"`
-	EventID     string             `bson:"event_id" json:"event_id"`
-	Sender      string             `bson:"sender" json:"sender"`
-	UserID      string             `bson:"user_id,omitempty" json:"user_id,omitempty"`
-	MessageType string             `bson:"type" json:"type"`
-	Timestamp   time.Time          `bson:"timestamp" json:"timestamp"`
-	Content     bson.M             `bson:"content" json:"content"`
+	ID          int64                  `json:"id,omitempty"`
+	RoomID      string                 `json:"room_id"`
+	EventID     string                 `json:"event_id"`
+	Sender      string                 `json:"sender"`
+	UserID      string                 `json:"user_id,omitempty"`
+	MessageType string                 `json:"type"`
+	Timestamp   time.Time              `json:"timestamp"`
+	Content     map[string]interface{} `json:"content"`
+}
+
+// ContentJSON returns the content as a JSON string for database storage
+func (m *Message) ContentJSON() (string, error) {
+	if m.Content == nil {
+		return "{}", nil
+	}
+	data, err := json.Marshal(m.Content)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+
+// SetContentFromJSON sets the content from a JSON string
+func (m *Message) SetContentFromJSON(jsonStr string) error {
+	if jsonStr == "" || jsonStr == "{}" {
+		m.Content = make(map[string]interface{})
+		return nil
+	}
+	return json.Unmarshal([]byte(jsonStr), &m.Content)
 }
 
 // IsImage returns true if the message is an image message
@@ -42,7 +62,7 @@ func (m *Message) ThumbnailURL() string {
 	if !m.IsImage() {
 		return ""
 	}
-	if info, ok := m.Content["info"].(bson.M); ok {
+	if info, ok := m.Content["info"].(map[string]interface{}); ok {
 		if thumbURL, ok := info["thumbnail_url"].(string); ok {
 			return thumbURL
 		}
@@ -104,32 +124,45 @@ type MessageFilter struct {
 	EndTime   *time.Time
 }
 
-// ToBSON converts the filter to a BSON query
-func (f *MessageFilter) ToBSON() bson.M {
-	filter := bson.M{}
+// ToSQL converts the filter to SQL WHERE conditions and arguments
+func (f *MessageFilter) ToSQL() (string, []interface{}) {
+	if f == nil {
+		return "", nil
+	}
+
+	var conditions []string
+	var args []interface{}
 
 	if f.RoomID != "" {
-		filter["room_id"] = f.RoomID
+		conditions = append(conditions, "room_id = ?")
+		args = append(args, f.RoomID)
 	}
 
 	if f.EventID != "" {
-		filter["event_id"] = f.EventID
+		conditions = append(conditions, "event_id = ?")
+		args = append(args, f.EventID)
 	}
 
 	if f.Sender != "" {
-		filter["sender"] = f.Sender
+		conditions = append(conditions, "sender = ?")
+		args = append(args, f.Sender)
 	}
 
-	if f.StartTime != nil || f.EndTime != nil {
-		timeFilter := bson.M{}
-		if f.StartTime != nil {
-			timeFilter["$gte"] = *f.StartTime
-		}
-		if f.EndTime != nil {
-			timeFilter["$lte"] = *f.EndTime
-		}
-		filter["timestamp"] = timeFilter
+	if f.StartTime != nil {
+		conditions = append(conditions, "timestamp >= ?")
+		args = append(args, *f.StartTime)
 	}
 
-	return filter
+	if f.EndTime != nil {
+		conditions = append(conditions, "timestamp <= ?")
+		args = append(args, *f.EndTime)
+	}
+
+	if len(conditions) == 0 {
+		return "", args
+	}
+
+	return strings.Join(conditions, " AND "), args
 }
+
+

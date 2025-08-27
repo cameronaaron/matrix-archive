@@ -7,5 +7,8 @@ import (
 
 func TestDatabasePlaceholder(t *testing.T) {
 	// Simple placeholder test to ensure package compiles
-	_ = archive.GetCollection
+	// Test that basic database functions are accessible
+	_ = archive.InitDatabase
+	_ = archive.CloseDatabase
+	_ = archive.GetDatabase
 }

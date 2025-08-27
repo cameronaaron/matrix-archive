@@ -11,8 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/mongo/options"
 	"gopkg.in/yaml.v3"
 )
 
@@ -27,11 +25,11 @@ type ExportMessage struct {
 
 // exportMessages exports messages to a file in various formats
 func ExportMessages(filename, roomID string, localImages bool) error {
-	// Initialize database connection
-	if err := InitMongoDB(); err != nil {
+	// Initialize database connection with DuckDB
+	if err := InitDuckDB(); err != nil {
 		return fmt.Errorf("failed to initialize database: %w", err)
 	}
-	defer CloseMongoDB()
+	defer CloseDatabase()
 
 	// Determine format from file extension
 	ext := strings.TrimPrefix(filepath.Ext(filename), ".")
@@ -62,20 +60,14 @@ func ExportMessages(filename, roomID string, localImages bool) error {
 		roomID = foundRoomID
 	}
 
-	// Query messages from database
-	collection := GetMessagesCollection()
-	filter := bson.M{"room_id": roomID}
-	opts := options.Find().SetSort(bson.M{"timestamp": 1})
+	// Query messages from DuckDB
+	filter := &MessageFilter{
+		RoomID: roomID,
+	}
 
-	cursor, err := collection.Find(context.Background(), filter, opts)
+	messages, err := GetDatabase().GetMessages(context.Background(), filter, 0, 0)
 	if err != nil {
 		return fmt.Errorf("failed to query messages: %w", err)
-	}
-	defer cursor.Close(context.Background())
-
-	var messages []Message
-	if err := cursor.All(context.Background(), &messages); err != nil {
-		return fmt.Errorf("failed to decode messages: %w", err)
 	}
 
 	fmt.Printf("Writing %d messages to %q\n", len(messages), filename)
@@ -83,7 +75,7 @@ func ExportMessages(filename, roomID string, localImages bool) error {
 	// Convert messages to export format
 	exportMessages := make([]ExportMessage, len(messages))
 	for i, msg := range messages {
-		exportMsg, err := convertToExportMessage(msg, localImages)
+		exportMsg, err := convertToExportMessage(*msg, localImages)
 		if err != nil {
 			return fmt.Errorf("failed to convert message: %w", err)
 		}
@@ -173,12 +165,6 @@ func convertToDownloadURLs(content map[string]interface{}) map[string]interface{
 			}
 		} else if subMap, ok := v.(map[string]interface{}); ok {
 			result[k] = convertToDownloadURLs(subMap)
-		} else if subMap, ok := v.(bson.M); ok {
-			converted := make(map[string]interface{})
-			for sk, sv := range subMap {
-				converted[sk] = sv
-			}
-			result[k] = convertToDownloadURLs(converted)
 		} else {
 			result[k] = v
 		}
@@ -198,12 +184,6 @@ func convertToLocalImages(content map[string]interface{}) map[string]interface{}
 			}
 		} else if subMap, ok := v.(map[string]interface{}); ok {
 			result[k] = convertToLocalImages(subMap)
-		} else if subMap, ok := v.(bson.M); ok {
-			converted := make(map[string]interface{})
-			for sk, sv := range subMap {
-				converted[sk] = sv
-			}
-			result[k] = convertToLocalImages(converted)
 		} else {
 			result[k] = v
 		}
@@ -263,7 +243,24 @@ func ExportWithTemplate(file *os.File, templatePath string, messages []ExportMes
 		return fmt.Errorf("failed to read template %s: %w", templatePath, err)
 	}
 
-	tmpl, err := template.New("export").Parse(string(templateContent))
+	// Create template with custom functions
+	funcMap := template.FuncMap{
+		"formatTime": func(timeStr string) string {
+			if timeStr == "" {
+				return ""
+			}
+			// Parse RFC3339 timestamp string
+			t, err := time.Parse(time.RFC3339, timeStr)
+			if err != nil {
+				// If parsing fails, return the original string
+				return timeStr
+			}
+			// Format it in a human-readable format
+			return t.Format("2006-01-02 15:04:05")
+		},
+	}
+
+	tmpl, err := template.New("export").Funcs(funcMap).Parse(string(templateContent))
 	if err != nil {
 		return fmt.Errorf("failed to parse template: %w", err)
 	}

@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"go.mongodb.org/mongo-driver/bson"
 )
 
 func TestGetExistingFilesMap(t *testing.T) {
@@ -42,7 +41,7 @@ func TestGetExistingFilesMap_WithFiles(t *testing.T) {
 func TestGetDownloadStem(t *testing.T) {
 	// Test with valid image URL
 	msg := archive.Message{
-		Content: bson.M{
+		Content: map[string]interface{}{
 			"msgtype": "m.image",
 			"url":     "mxc://example.com/abc123def",
 		},
@@ -53,10 +52,10 @@ func TestGetDownloadStem(t *testing.T) {
 
 	// Test with thumbnail preference
 	msgWithThumb := archive.Message{
-		Content: bson.M{
+		Content: map[string]interface{}{
 			"msgtype": "m.image",
 			"url":     "mxc://example.com/abc123def",
-			"info": bson.M{
+			"info": map[string]interface{}{
 				"thumbnail_url": "mxc://example.com/thumb123",
 			},
 		},
@@ -67,7 +66,7 @@ func TestGetDownloadStem(t *testing.T) {
 
 	// Test with no image URL
 	textMsg := archive.Message{
-		Content: bson.M{
+		Content: map[string]interface{}{
 			"msgtype": "m.text",
 			"body":    "Hello world",
 		},

@@ -43,15 +43,8 @@ func TestPublicAPIAccessibility(t *testing.T) {
 	_ = archive.GetExistingFilesMap
 	_ = archive.ImportMessages
 	_ = archive.IsMessageEvent
-	_ = archive.ReplaceDots
 	_ = archive.ListRooms
 	_ = archive.GetRoomDisplayName
 	_ = archive.IsValidFormat
 	_ = archive.NewBeeperAuth
-	_ = archive.InitMongoDB
-	_ = archive.CloseMongoDB
-	_ = archive.GetCollection
-	_ = archive.GetMessagesCollection
-	_ = archive.GetMongoClient
-	_ = archive.GetMongoDatabase
 }

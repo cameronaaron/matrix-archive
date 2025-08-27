@@ -1,8 +1,7 @@
 {{range .messages -}}
 ================================================================================
 From: {{.Sender}}
-Date: {{.Timestamp.Format "2006-01-02 15:04:05"}}
-Event ID: {{.EventID}}
+Date: {{formatTime .Timestamp}}
 {{$msgtype := index .Content "msgtype" -}}
 {{if $msgtype -}}
 Type: {{$msgtype}}

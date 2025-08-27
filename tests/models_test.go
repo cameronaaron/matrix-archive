@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"go.mongodb.org/mongo-driver/bson"
 )
 
 func TestMessage_IsImage(t *testing.T) {
@@ -69,32 +68,36 @@ func TestMessage_Validate(t *testing.T) {
 	assert.Error(t, invalidRoomID.Validate())
 }
 
-func TestMessageFilter_ToBSON(t *testing.T) {
+func TestMessageFilter_ToSQL(t *testing.T) {
 	// Test empty filter
 	emptyFilter := archive.MessageFilter{}
-	bson := emptyFilter.ToBSON()
-	assert.Empty(t, bson)
+	sql, args := emptyFilter.ToSQL()
+	assert.Empty(t, sql)
+	assert.Empty(t, args)
 
 	// Test filter with room ID
 	roomFilter := archive.MessageFilter{
 		RoomID: "!room123:example.com",
 	}
-	bson = roomFilter.ToBSON()
-	assert.Equal(t, "!room123:example.com", bson["room_id"])
+	sql, args = roomFilter.ToSQL()
+	assert.Equal(t, "room_id = ?", sql)
+	assert.Equal(t, []interface{}{"!room123:example.com"}, args)
 
 	// Test filter with sender
 	senderFilter := archive.MessageFilter{
 		Sender: "@user:example.com",
 	}
-	bson = senderFilter.ToBSON()
-	assert.Equal(t, "@user:example.com", bson["sender"])
+	sql, args = senderFilter.ToSQL()
+	assert.Equal(t, "sender = ?", sql)
+	assert.Equal(t, []interface{}{"@user:example.com"}, args)
 
 	// Test filter with event ID
 	eventFilter := archive.MessageFilter{
 		EventID: "$event123:example.com",
 	}
-	bson = eventFilter.ToBSON()
-	assert.Equal(t, "$event123:example.com", bson["event_id"])
+	sql, args = eventFilter.ToSQL()
+	assert.Equal(t, "event_id = ?", sql)
+	assert.Equal(t, []interface{}{"$event123:example.com"}, args)
 
 	// Test complete filter
 	completeFilter := archive.MessageFilter{
@@ -102,18 +105,17 @@ func TestMessageFilter_ToBSON(t *testing.T) {
 		Sender:  "@user:example.com",
 		EventID: "$event123:example.com",
 	}
-	bson = completeFilter.ToBSON()
-	assert.Equal(t, "!room123:example.com", bson["room_id"])
-	assert.Equal(t, "@user:example.com", bson["sender"])
-	assert.Equal(t, "$event123:example.com", bson["event_id"])
+	sql, args = completeFilter.ToSQL()
+	assert.Equal(t, "room_id = ? AND event_id = ? AND sender = ?", sql)
+	assert.Equal(t, []interface{}{"!room123:example.com", "$event123:example.com", "@user:example.com"}, args)
 }
 
 func TestMessage_ThumbnailURL(t *testing.T) {
 	// Test image message with thumbnail URL
 	imageMsg := archive.Message{
-		Content: bson.M{
+		Content: map[string]interface{}{
 			"msgtype": "m.image",
-			"info": bson.M{
+			"info": map[string]interface{}{
 				"thumbnail_url": "mxc://example.com/thumb123",
 			},
 		},
@@ -122,7 +124,7 @@ func TestMessage_ThumbnailURL(t *testing.T) {
 
 	// Test image message without thumbnail
 	imageMsgNoThumb := archive.Message{
-		Content: bson.M{
+		Content: map[string]interface{}{
 			"msgtype": "m.image",
 			"url":     "mxc://example.com/abc123",
 		},
@@ -131,7 +133,7 @@ func TestMessage_ThumbnailURL(t *testing.T) {
 
 	// Test non-image message
 	textMsg := archive.Message{
-		Content: bson.M{
+		Content: map[string]interface{}{
 			"msgtype": "m.text",
 			"body":    "Hello world",
 		},
@@ -140,9 +142,9 @@ func TestMessage_ThumbnailURL(t *testing.T) {
 
 	// Test image message with info but no thumbnail URL
 	imageMsgNoThumbURL := archive.Message{
-		Content: bson.M{
+		Content: map[string]interface{}{
 			"msgtype": "m.image",
-			"info": bson.M{
+			"info": map[string]interface{}{
 				"mimetype": "image/jpeg",
 			},
 		},

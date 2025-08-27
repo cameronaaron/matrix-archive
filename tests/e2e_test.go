@@ -1,9 +1,9 @@
 package tests
 
 import (
-	archive "github.com/osteele/matrix-archive/lib"
 	"context"
 	"fmt"
+	archive "github.com/osteele/matrix-archive/lib"
 	"os"
 	"testing"
 	"time"
@@ -27,19 +27,16 @@ func TestE2EBasic(t *testing.T) {
 }
 
 func TestE2EExportedFunctions(t *testing.T) {
-	// Test that database functions are accessible
-	_ = archive.InitMongoDB
-	_ = archive.CloseMongoDB
-	_ = archive.GetCollection
-	_ = archive.GetMessagesCollection
-	_ = archive.GetMongoClient
-	_ = archive.GetMongoDatabase
+	// Test that essential functions are accessible
+	_ = archive.InitDatabase
+	_ = archive.CloseDatabase
+	_ = archive.GetDatabase
 }
 
 func TestE2EBeeperAuthentication(t *testing.T) {
 	// Test Beeper authentication end-to-end flow using saved credentials
 	fmt.Println("=== Testing Beeper Authentication E2E ===")
-	
+
 	// Create Beeper auth instance
 	auth := archive.NewBeeperAuth("beeper.com")
 	if auth == nil {
@@ -90,26 +87,30 @@ func TestE2EBeeperAuthentication(t *testing.T) {
 		fmt.Printf("✓ Set MATRIX_USER environment variable: @%s:beeper.com\n", auth.Whoami.UserInfo.Username)
 	}
 
-	// Test database initialization
-	err = archive.InitMongoDB()
+	// Test database initialization with DuckDB
+	config := &archive.DatabaseConfig{
+		DatabaseURL: ":memory:",
+		IsInMemory:  true,
+	}
+	err = archive.InitDatabase(config)
 	if err != nil {
-		t.Fatalf("Failed to initialize MongoDB: %v", err)
+		t.Fatalf("Failed to initialize DuckDB: %v", err)
 	}
-	defer archive.CloseMongoDB()
+	defer archive.CloseDatabase()
 
-	fmt.Println("✓ Successfully initialized MongoDB connection")
+	fmt.Println("✓ Successfully initialized DuckDB connection")
 
-	// Test that we can get the messages collection
-	collection := archive.GetMessagesCollection()
-	if collection == nil {
-		t.Fatal("Failed to get messages collection")
+	// Test that we can get the database interface
+	db := archive.GetDatabase()
+	if db == nil {
+		t.Fatal("Failed to get database interface")
 	}
 
-	fmt.Println("✓ Successfully accessed messages collection")
+	fmt.Println("✓ Successfully accessed database interface")
 
 	// Test room listing functionality
 	fmt.Println("\n=== Testing Room Operations ===")
-	
+
 	// We can't easily test ListRooms without output capture, but we can test GetRoomDisplayName
 	if len(joinedRooms.JoinedRooms) > 0 {
 		// Test with the first room
@@ -139,24 +140,24 @@ func TestE2EBeeperCredentialsManagement(t *testing.T) {
 	fmt.Println("=== Testing Beeper Credentials Management ===")
 
 	auth := archive.NewBeeperAuth("test.beeper.com") // Use a different domain for testing
-	
+
 	// Test getting credentials file path
 	filePath, err := auth.GetCredentialsFilePath()
 	if err != nil {
 		t.Fatalf("Failed to get credentials file path: %v", err)
 	}
-	
+
 	fmt.Printf("✓ Credentials file path: %s\n", filePath)
 
 	// Test saving dummy credentials
 	auth.Email = "test@example.com"
 	auth.Token = "dummy-token-for-testing"
-	
+
 	err = auth.SaveCredentialsToFile()
 	if err != nil {
 		t.Fatalf("Failed to save test credentials: %v", err)
 	}
-	
+
 	fmt.Println("✓ Successfully saved test credentials to file")
 
 	// Test loading credentials
@@ -165,11 +166,11 @@ func TestE2EBeeperCredentialsManagement(t *testing.T) {
 	if !loaded {
 		t.Fatal("Failed to load test credentials from file")
 	}
-	
+
 	if auth2.Email != auth.Email || auth2.Token != auth.Token {
 		t.Fatal("Loaded credentials don't match saved credentials")
 	}
-	
+
 	fmt.Printf("✓ Successfully loaded credentials: %s\n", auth2.Email)
 
 	// Clean up test credentials
@@ -177,16 +178,16 @@ func TestE2EBeeperCredentialsManagement(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to clear test credentials: %v", err)
 	}
-	
+
 	fmt.Println("✓ Successfully cleared test credentials")
-	
+
 	// Verify credentials were cleared
 	auth3 := archive.NewBeeperAuth("test.beeper.com")
 	stillThere := auth3.LoadCredentialsFromFile()
 	if stillThere {
 		t.Fatal("Credentials should have been cleared but they're still there")
 	}
-	
+
 	fmt.Println("✓ Verified credentials were properly cleared")
 	fmt.Println("🎉 Credentials management working correctly!")
 }
@@ -194,14 +195,14 @@ func TestE2EBeeperCredentialsManagement(t *testing.T) {
 func TestE2EBeeperFullWorkflow(t *testing.T) {
 	// Test the complete workflow: authentication -> room discovery -> message import
 	fmt.Println("=== Testing Complete Beeper Workflow ===")
-	
+
 	// Step 1: Initialize Beeper authentication
 	auth := archive.NewBeeperAuth("beeper.com")
 	credentialsLoaded := auth.LoadCredentials()
 	if !credentialsLoaded {
 		t.Skip("No Beeper credentials found - skipping full workflow test")
 	}
-	
+
 	fmt.Printf("✓ Step 1: Loaded Beeper credentials for: %s\n", auth.Email)
 
 	// Step 2: Get Matrix client
@@ -209,7 +210,7 @@ func TestE2EBeeperFullWorkflow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Step 2 failed: Could not get Matrix client: %v", err)
 	}
-	
+
 	fmt.Println("✓ Step 2: Created Matrix client using Beeper authentication")
 
 	// Step 3: Set up environment for integration
@@ -218,60 +219,64 @@ func TestE2EBeeperFullWorkflow(t *testing.T) {
 	if auth.Whoami != nil {
 		os.Setenv("MATRIX_USER", fmt.Sprintf("@%s:beeper.com", auth.Whoami.UserInfo.Username))
 	}
-	
+
 	fmt.Println("✓ Step 3: Set environment variables for Beeper integration")
 
-	// Step 4: Initialize database
-	err = archive.InitMongoDB()
-	if err != nil {
-		t.Fatalf("Step 4 failed: Could not initialize MongoDB: %v", err)
+	// Step 4: Initialize database with DuckDB
+	config := &archive.DatabaseConfig{
+		DatabaseURL: ":memory:",
+		IsInMemory:  true,
 	}
-	defer archive.CloseMongoDB()
-	
-	fmt.Println("✓ Step 4: Initialized MongoDB connection")
+	err = archive.InitDatabase(config)
+	if err != nil {
+		t.Fatalf("Step 4 failed: Could not initialize DuckDB: %v", err)
+	}
+	defer archive.CloseDatabase()
+
+	fmt.Println("✓ Step 4: Initialized DuckDB connection")
 
 	// Step 5: Get joined rooms
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	
+
 	joinedRooms, err := client.JoinedRooms(ctx)
 	if err != nil {
 		t.Fatalf("Step 5 failed: Could not get joined rooms: %v", err)
 	}
-	
+
 	fmt.Printf("✓ Step 5: Retrieved %d joined rooms\n", len(joinedRooms.JoinedRooms))
 
 	// Step 6: Test room operations
 	if len(joinedRooms.JoinedRooms) > 0 {
 		// Test with first available room
 		testRoom := string(joinedRooms.JoinedRooms[0])
-		
+
 		displayName, err := archive.GetRoomDisplayName(client, testRoom)
 		if err != nil {
 			fmt.Printf("Warning: Could not get display name for room %s: %v\n", testRoom, err)
 		} else {
 			fmt.Printf("✓ Step 6: Got room display name: %s -> %s\n", testRoom, displayName)
 		}
-		
+
 		// Step 7: Test message import functionality (without actually importing)
-		// We can test that the import process starts correctly
-		collection := archive.GetMessagesCollection()
-		if collection == nil {
-			t.Fatal("Step 7 failed: Could not access messages collection")
+		// We can test that the database interface works correctly
+		db := archive.GetDatabase()
+		if db == nil {
+			t.Fatal("Step 7 failed: Could not access database interface")
 		}
-		
-		fmt.Println("✓ Step 7: Verified message collection access")
-		
+
+		fmt.Println("✓ Step 7: Verified database interface access")
+
 		// Test that message filtering works
 		filter := archive.MessageFilter{
 			RoomID: testRoom,
 		}
-		bsonFilter := filter.ToBSON()
-		if bsonFilter == nil {
-			t.Fatal("Step 7 failed: Could not create BSON filter")
+		sql, args := filter.ToSQL()
+		if sql == "" {
+			t.Fatal("Step 7 failed: Could not create SQL filter")
 		}
-		
-		fmt.Println("✓ Step 7: Message filtering functionality working")
+
+		fmt.Printf("✓ Step 7: Message filtering functionality working: %s with args %v\n", sql, args)
 	}
 
 	fmt.Println("\n=== Complete Beeper Workflow Test Summary ===")
@@ -283,7 +288,7 @@ func TestE2EBeeperFullWorkflow(t *testing.T) {
 	fmt.Println("✓ Room Operations: Tested room display name functionality")
 	fmt.Println("✓ Message System: Verified collection access and filtering")
 	fmt.Println("🎉 Complete Beeper workflow is fully functional!")
-	
+
 	// Cleanup environment variables
 	os.Unsetenv("USE_BEEPER_AUTH")
 	os.Unsetenv("BEEPER_TOKEN")

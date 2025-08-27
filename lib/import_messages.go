@@ -4,11 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"strings"
 	"time"
 
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/mongo"
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
@@ -21,9 +18,9 @@ var messageEventTypes = []event.Type{
 
 // Rate limiting configuration
 const (
-	DefaultRateLimit = 10               // requests per second
-	RateLimitWindow  = time.Second      // rate limit window
-	MaxBurstSize     = 20               // maximum burst size
+	DefaultRateLimit = 10          // requests per second
+	RateLimitWindow  = time.Second // rate limit window
+	MaxBurstSize     = 20          // maximum burst size
 )
 
 // RateLimiter provides simple rate limiting for API calls
@@ -48,14 +45,72 @@ func (rl *RateLimiter) Wait() {
 	rl.lastCall = time.Now()
 }
 
-// importMessages imports messages from Matrix rooms into MongoDB
+// importMessages imports messages from Matrix rooms into the database
 func ImportMessages(limit int) error {
-	// Initialize database connection
-	if err := InitMongoDB(); err != nil {
+	// Initialize database connection with DuckDB
+	if err := InitDuckDB(); err != nil {
 		return fmt.Errorf("failed to initialize database: %w", err)
 	}
-	defer CloseMongoDB()
+	defer CloseDatabase()
 
+	// Get Matrix client
+	client, err := GetMatrixClient()
+	if err != nil {
+		return fmt.Errorf("failed to get Matrix client: %w", err)
+	}
+
+	// Use enhanced client for better mautrix-go integration
+	enhanced, err := NewEnhancedMatrixClient(
+		client.HomeserverURL.String(),
+		client.UserID,
+		client.AccessToken,
+		GetDatabase(),
+	)
+	if err != nil {
+		// Fallback to original implementation if enhanced fails
+		log.Printf("Warning: Could not create enhanced client, using fallback: %v", err)
+		return importMessagesLegacy(limit)
+	}
+
+	// Get configured room IDs
+	roomIDs, err := GetMatrixRoomIDs()
+	if err != nil {
+		return fmt.Errorf("failed to get room IDs: %w", err)
+	}
+
+	totalImported := 0
+
+	// Import from each room using enhanced client
+	for i, roomID := range roomIDs {
+		fmt.Printf("\n[%d/%d] Processing room: %s\n", i+1, len(roomIDs), roomID)
+
+		count, err := enhanced.importEventsFromRoom(roomID, limit)
+		if err != nil {
+			log.Printf("Error importing from room %s: %v", roomID, err)
+			continue
+		}
+		totalImported += count
+		fmt.Printf("✓ Imported %d messages from room %s\n", count, roomID)
+
+		// Show progress
+		if len(roomIDs) > 1 {
+			fmt.Printf("Progress: %d/%d rooms completed\n", i+1, len(roomIDs))
+		}
+	}
+
+	// Get total message count
+	totalCount, err := GetDatabase().GetMessageCount(context.Background(), nil)
+	if err != nil {
+		log.Printf("Failed to count total messages: %v", err)
+	} else {
+		fmt.Printf("The database now has %d total messages\n", totalCount)
+	}
+
+	return nil
+}
+
+// importMessagesLegacy provides fallback using the original implementation with DuckDB
+func importMessagesLegacy(limit int) error {
 	// Get Matrix client
 	client, err := GetMatrixClient()
 	if err != nil {
@@ -68,7 +123,7 @@ func ImportMessages(limit int) error {
 		return fmt.Errorf("failed to get room IDs: %w", err)
 	}
 
-	// Create rate limiter (10 requests per second)
+	// Create rate limiter (10 requests per second) - fallback to custom implementation
 	rateLimiter := NewRateLimiter(DefaultRateLimit)
 
 	totalImported := 0
@@ -76,15 +131,15 @@ func ImportMessages(limit int) error {
 	// Import from each room
 	for i, roomID := range roomIDs {
 		fmt.Printf("\n[%d/%d] Processing room: %s\n", i+1, len(roomIDs), roomID)
-		
-		count, err := importEventsFromRoom(client, roomID, limit, rateLimiter)
+
+		count, err := importEventsFromRoomLegacy(client, roomID, limit, rateLimiter)
 		if err != nil {
 			log.Printf("Error importing from room %s: %v", roomID, err)
 			continue
 		}
 		totalImported += count
 		fmt.Printf("✓ Imported %d messages from room %s\n", count, roomID)
-		
+
 		// Show progress
 		if len(roomIDs) > 1 {
 			fmt.Printf("Progress: %d/%d rooms completed\n", i+1, len(roomIDs))
@@ -92,8 +147,7 @@ func ImportMessages(limit int) error {
 	}
 
 	// Get total message count
-	collection := GetMessagesCollection()
-	totalCount, err := collection.CountDocuments(context.Background(), bson.M{})
+	totalCount, err := GetDatabase().GetMessageCount(context.Background(), nil)
 	if err != nil {
 		log.Printf("Failed to count total messages: %v", err)
 	} else {
@@ -103,8 +157,8 @@ func ImportMessages(limit int) error {
 	return nil
 }
 
-// importEventsFromRoom imports events from a specific room
-func importEventsFromRoom(client *mautrix.Client, roomID string, limit int, rateLimiter *RateLimiter) (int, error) {
+// importEventsFromRoomLegacy imports events from a specific room (legacy implementation with DuckDB)
+func importEventsFromRoomLegacy(client *mautrix.Client, roomID string, limit int, rateLimiter *RateLimiter) (int, error) {
 	// Get room display name for logging
 	displayName, err := GetRoomDisplayName(client, roomID)
 	if err != nil {
@@ -113,7 +167,6 @@ func importEventsFromRoom(client *mautrix.Client, roomID string, limit int, rate
 
 	fmt.Printf("Reading events from room %q...\n", displayName)
 
-	collection := GetMessagesCollection()
 	importCount := 0
 	batchSize := 1000
 	totalEventsRead := 0
@@ -129,9 +182,9 @@ func importEventsFromRoom(client *mautrix.Client, roomID string, limit int, rate
 
 	for {
 		totalEventsRead += len(resp.Chunk)
-		
-		// Process events from this batch
-		count, err := processEventBatch(collection, resp.Chunk, roomID, limit-importCount)
+
+		// Process events from this batch using DuckDB
+		count, err := processEventBatchLegacy(resp.Chunk, roomID, limit-importCount)
 		if err != nil {
 			return importCount, err
 		}
@@ -140,7 +193,7 @@ func importEventsFromRoom(client *mautrix.Client, roomID string, limit int, rate
 		// Show progress with more detail
 		if limit > 0 {
 			percentage := float64(importCount) / float64(limit) * 100
-			fmt.Printf("Progress: %d/%d messages imported (%.1f%%), %d events read\n", 
+			fmt.Printf("Progress: %d/%d messages imported (%.1f%%), %d events read\n",
 				importCount, limit, percentage, totalEventsRead)
 		} else {
 			fmt.Printf("Progress: %d messages imported, %d events read\n", importCount, totalEventsRead)
@@ -172,14 +225,14 @@ func importEventsFromRoom(client *mautrix.Client, roomID string, limit int, rate
 	return importCount, nil
 }
 
-// processEventBatch processes a batch of events and saves them to MongoDB
-func processEventBatch(collection *mongo.Collection, events []*event.Event, roomID string, remainingLimit int) (int, error) {
+// processEventBatchLegacy processes a batch of events and saves them to DuckDB (legacy implementation)
+func processEventBatchLegacy(events []*event.Event, roomID string, remainingLimit int) (int, error) {
 	ctx := context.Background()
 	importCount := 0
-	
+
 	// Use smaller batch sizes for database operations to manage memory
 	const dbBatchSize = 100
-	var messageBatch []interface{}
+	var messageBatch []*Message
 
 	for _, evt := range events {
 		// Check limit
@@ -212,10 +265,10 @@ func processEventBatch(collection *mongo.Collection, events []*event.Event, room
 
 		// Add to batch
 		messageBatch = append(messageBatch, message)
-		
+
 		// Process batch when it reaches the limit or this is the last message
 		if len(messageBatch) >= dbBatchSize || (remainingLimit > 0 && importCount+len(messageBatch) >= remainingLimit) {
-			insertedCount, err := insertMessageBatch(collection, ctx, messageBatch)
+			insertedCount, err := GetDatabase().InsertMessageBatch(ctx, messageBatch)
 			if err != nil {
 				log.Printf("Failed to insert batch: %v", err)
 				// Continue with remaining messages despite batch failure
@@ -229,7 +282,7 @@ func processEventBatch(collection *mongo.Collection, events []*event.Event, room
 
 	// Process any remaining messages in the batch
 	if len(messageBatch) > 0 {
-		insertedCount, err := insertMessageBatch(collection, ctx, messageBatch)
+		insertedCount, err := GetDatabase().InsertMessageBatch(ctx, messageBatch)
 		if err != nil {
 			log.Printf("Failed to insert final batch: %v", err)
 		} else {
@@ -238,20 +291,6 @@ func processEventBatch(collection *mongo.Collection, events []*event.Event, room
 	}
 
 	return importCount, nil
-}
-
-// insertMessageBatch inserts a batch of messages efficiently
-func insertMessageBatch(collection *mongo.Collection, ctx context.Context, messages []interface{}) (int, error) {
-	if len(messages) == 0 {
-		return 0, nil
-	}
-	
-	result, err := collection.InsertMany(ctx, messages)
-	if err != nil {
-		return 0, err
-	}
-	
-	return len(result.InsertedIDs), nil
 }
 
 // IsMessageEvent checks if an event type is a message event
@@ -266,18 +305,12 @@ func IsMessageEvent(eventType event.Type) bool {
 
 // convertEventToMessage converts a Matrix event to our Message struct
 func convertEventToMessage(evt *event.Event, roomID string) (*Message, error) {
-	// Replace dots with bullets in content to avoid MongoDB issues
-	processedContent := ReplaceDots(evt.Content.Raw)
-	
-	// Convert to bson.M, handling the case where ReplaceDots returns interface{}
-	var content bson.M
-	if contentMap, ok := processedContent.(bson.M); ok {
-		content = contentMap
-	} else if contentMap, ok := processedContent.(map[string]interface{}); ok {
-		content = bson.M(contentMap)
+	// Use the raw content directly - DuckDB JSON storage doesn't have MongoDB's dot limitation
+	var content map[string]interface{}
+	if evt.Content.Raw != nil {
+		content = evt.Content.Raw
 	} else {
-		// Fallback for unexpected types
-		content = bson.M{"data": processedContent}
+		content = make(map[string]interface{})
 	}
 
 	message := &Message{
@@ -292,32 +325,4 @@ func convertEventToMessage(evt *event.Event, roomID string) (*Message, error) {
 	return message, nil
 }
 
-// ReplaceDots recursively replaces '.' with '•' in map keys to avoid MongoDB issues
-func ReplaceDots(obj interface{}) interface{} {
-	switch v := obj.(type) {
-	case map[string]interface{}:
-		result := bson.M{}
-		for key, value := range v {
-			newKey := strings.ReplaceAll(key, ".", "•")
-			result[newKey] = ReplaceDots(value)
-		}
-		return result
-	case bson.M:
-		result := bson.M{}
-		for key, value := range v {
-			newKey := strings.ReplaceAll(key, ".", "•")
-			result[newKey] = ReplaceDots(value)
-		}
-		return result
-	case []interface{}:
-		// Handle arrays by processing each element
-		result := make([]interface{}, len(v))
-		for i, item := range v {
-			result[i] = ReplaceDots(item)
-		}
-		return result
-	default:
-		// For primitive types (strings, numbers, booleans), return as-is
-		return v
-	}
-}
+

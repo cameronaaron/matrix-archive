@@ -10,20 +10,46 @@ import (
 	"time"
 
 	"maunium.net/go/mautrix"
-	"maunium.net/go/mautrix/bridge/status"
 	"maunium.net/go/mautrix/id"
 )
 
+// BridgeStateEvent represents the state of a bridge (replaces status.BridgeStateEvent)
+type BridgeStateEvent string
+
+const (
+	BridgeStateUnconfigured        BridgeStateEvent = "UNCONFIGURED"
+	BridgeStateConnecting          BridgeStateEvent = "CONNECTING"
+	BridgeStateBackfilling         BridgeStateEvent = "BACKFILLING"
+	BridgeStateConnected           BridgeStateEvent = "CONNECTED"
+	BridgeStateTransientDisconnect BridgeStateEvent = "TRANSIENT_DISCONNECT"
+	BridgeStateBadCredentials      BridgeStateEvent = "BAD_CREDENTIALS"
+	BridgeStateUnknownError        BridgeStateEvent = "UNKNOWN_ERROR"
+	BridgeStateLoggedOut           BridgeStateEvent = "LOGGED_OUT"
+)
+
+// BridgeState represents bridge state information (replaces status.BridgeState)
+type BridgeStateInfo struct {
+	StateEvent BridgeStateEvent `json:"stateEvent"`
+	Timestamp  int64            `json:"timestamp"`
+	TTL        int              `json:"ttl"`
+	Source     string           `json:"source"`
+	Error      string           `json:"error,omitempty"`
+	Message    string           `json:"message,omitempty"`
+	UserID     id.UserID        `json:"userId,omitempty"`
+	RemoteID   string           `json:"remoteId,omitempty"`
+	RemoteName string           `json:"remoteName,omitempty"`
+}
+
 type BridgeState struct {
-	Username     string                  `json:"username"`
-	Bridge       string                  `json:"bridge"`
-	StateEvent   status.BridgeStateEvent `json:"stateEvent"`
-	Source       string                  `json:"source"`
-	CreatedAt    time.Time               `json:"createdAt"`
-	Reason       string                  `json:"reason"`
-	Info         map[string]any          `json:"info"`
-	IsSelfHosted bool                    `json:"isSelfHosted"`
-	BridgeType   string                  `json:"bridgeType"`
+	Username     string           `json:"username"`
+	Bridge       string           `json:"bridge"`
+	StateEvent   BridgeStateEvent `json:"stateEvent"`
+	Source       string           `json:"source"`
+	CreatedAt    time.Time        `json:"createdAt"`
+	Reason       string           `json:"reason"`
+	Info         map[string]any   `json:"info"`
+	IsSelfHosted bool             `json:"isSelfHosted"`
+	BridgeType   string           `json:"bridgeType"`
 }
 
 type WhoamiBridge struct {
@@ -33,8 +59,8 @@ type WhoamiBridge struct {
 		Name    string `json:"name"`
 		Version string `json:"version"`
 	} `json:"otherVersions"`
-	BridgeState BridgeState                   `json:"bridgeState"`
-	RemoteState map[string]status.BridgeState `json:"remoteState"`
+	BridgeState BridgeState                `json:"bridgeState"`
+	RemoteState map[string]BridgeStateInfo `json:"remoteState"`
 }
 
 type WhoamiAsmuxData struct {
@@ -138,11 +164,11 @@ func doRequest(req *http.Request, reqData, resp any) (err error) {
 }
 
 type ReqPostBridgeState struct {
-	StateEvent   status.BridgeStateEvent `json:"stateEvent"`
-	Reason       string                  `json:"reason"`
-	Info         map[string]any          `json:"info"`
-	IsSelfHosted bool                    `json:"isSelfHosted"`
-	BridgeType   string                  `json:"bridgeType,omitempty"`
+	StateEvent   BridgeStateEvent `json:"stateEvent"`
+	Reason       string           `json:"reason"`
+	Info         map[string]any   `json:"info"`
+	IsSelfHosted bool             `json:"isSelfHosted"`
+	BridgeType   string           `json:"bridgeType,omitempty"`
 }
 
 func DeleteBridge(domain, bridgeName, token string) error {
