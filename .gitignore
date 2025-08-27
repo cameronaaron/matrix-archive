@@ -1,7 +1,7 @@
 # Build outputs
 /cmd/matrix-archive/matrix-archive
 /bin/matrix-archive
-matrix-archive
+/matrix-archive
 *.exe
 *.exe~
 *.dll
