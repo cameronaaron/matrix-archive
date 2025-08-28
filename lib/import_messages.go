@@ -31,6 +31,13 @@ type RateLimiter struct {
 
 // NewRateLimiter creates a new rate limiter with the specified rate (requests per second)
 func NewRateLimiter(requestsPerSecond int) *RateLimiter {
+	if requestsPerSecond <= 0 {
+		// Handle edge cases: use a very slow rate (1 request per hour) for zero/negative values
+		requestsPerSecond = 1
+		return &RateLimiter{
+			rate: time.Hour,
+		}
+	}
 	return &RateLimiter{
 		rate: time.Second / time.Duration(requestsPerSecond),
 	}

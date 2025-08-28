@@ -133,12 +133,12 @@ func TestDownloadFunctionsDirectly(t *testing.T) {
 	// Test DownloadImages which calls runDownloads internally
 	tempDir := t.TempDir()
 
-	// Test without database (should fail but exercise code paths)
+	// Test without existing messages (should succeed but find no images)
 	err := archive.DownloadImages(tempDir, false)
-	assert.Error(t, err, "DownloadImages should fail without database")
+	assert.NoError(t, err, "DownloadImages should succeed even with empty database")
 
 	err = archive.DownloadImages(tempDir, true)
-	assert.Error(t, err, "DownloadImages should fail without database for thumbnails")
+	assert.NoError(t, err, "DownloadImages should succeed even with empty database for thumbnails")
 
 	// Test with various invalid directories to exercise error paths
 	err = archive.DownloadImages("/root/forbidden", false)
