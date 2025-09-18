@@ -28,7 +28,6 @@ This follows Go's standard project layout conventions for professional applicati
 ## Prerequisites
 
 - Go 1.21 or later
-- MongoDB (local installation or remote instance)
 
 ## Installation
 
@@ -64,13 +63,13 @@ Set these environment variables or create a `.env` file:
 
 #### Common Variables
 - `MATRIX_ROOM_IDS`: Comma-separated list of Matrix room IDs (e.g., `!roomid1:matrix.org,!roomid2:matrix.org`)
-- `MONGODB_URI`: MongoDB connection URL (optional, defaults to local MongoDB at `mongodb://localhost:27017`)
+- `DUCKDB_URL`: DuckDB database file path (optional, defaults to `matrix_archive.duckdb`)
 
 Example `.env` file for Beeper:
 ```env
 USE_BEEPER_AUTH=true
 MATRIX_ROOM_IDS=!roomid1:matrix.org,!roomid2:matrix.org
-MONGODB_URI=mongodb://localhost:27017
+DUCKDB_URL=matrix_archive.duckdb
 ```
 
 Example `.env` file for traditional Matrix:
@@ -78,7 +77,7 @@ Example `.env` file for traditional Matrix:
 MATRIX_USER=@myuser:matrix.org
 MATRIX_PASSWORD=mypassword
 MATRIX_ROOM_IDS=!roomid1:matrix.org,!roomid2:matrix.org
-MONGODB_URI=mongodb://localhost:27017
+DUCKDB_URL=matrix_archive.duckdb
 ```
 
 To find room IDs, run `./matrix-archive list` to list all rooms you have access to.
@@ -116,7 +115,7 @@ Lists all Matrix rooms that you have access to, optionally filtered by a regex p
 ./matrix-archive import [--limit N]
 ```
 
-Imports messages from the configured Matrix rooms into MongoDB for archival.
+Imports messages from the configured Matrix rooms into DuckDB for archival.
 
 Options:
 - `--limit N`: Limit the number of messages to import (optional)
@@ -175,13 +174,13 @@ You can modify these templates to customize the export format.
 
 - [mautrix/go](https://github.com/mautrix/go): Matrix client library
 - [spf13/cobra](https://github.com/spf13/cobra): CLI framework
-- [MongoDB Go Driver](https://github.com/mongodb/mongo-go-driver): MongoDB driver
+- [DuckDB Go Driver](https://github.com/marcboeker/go-duckdb): DuckDB database driver
 - [joho/godotenv](https://github.com/joho/godotenv): Environment variable loading
 
 ## Differences from Python Version
 
 - Uses the mautrix/go library instead of matrix_client
-- MongoDB operations use the official Go driver instead of mongoengine
+- DuckDB operations use the official Go driver instead of mongoengine
 - CLI built with Cobra instead of Click
 - Template rendering uses Go's html/template instead of Jinja2
 - Error handling follows Go conventions

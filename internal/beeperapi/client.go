@@ -163,24 +163,6 @@ func doRequest(req *http.Request, reqData, resp any) (err error) {
 	return nil
 }
 
-type ReqPostBridgeState struct {
-	StateEvent   BridgeStateEvent `json:"stateEvent"`
-	Reason       string           `json:"reason"`
-	Info         map[string]any   `json:"info"`
-	IsSelfHosted bool             `json:"isSelfHosted"`
-	BridgeType   string           `json:"bridgeType,omitempty"`
-}
-
-func DeleteBridge(domain, bridgeName, token string) error {
-	req := newRequest(domain, token, http.MethodDelete, fmt.Sprintf("/bridge/%s", bridgeName))
-	return doRequest(req, nil, nil)
-}
-
-func PostBridgeState(domain, username, bridgeName, asToken string, data ReqPostBridgeState) error {
-	req := newRequest(domain, asToken, http.MethodPost, fmt.Sprintf("/bridgebox/%s/bridge/%s/bridge_state", username, bridgeName))
-	return doRequest(req, &data, nil)
-}
-
 func Whoami(baseDomain, token string) (resp *RespWhoami, err error) {
 	req := newRequest(baseDomain, token, http.MethodGet, "/whoami")
 	err = doRequest(req, nil, &resp)

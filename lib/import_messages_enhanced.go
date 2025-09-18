@@ -58,67 +58,7 @@ func NewEnhancedMatrixClient(homeserverURL string, userID id.UserID, accessToken
 	return enhanced, nil
 }
 
-// ImportMessages imports messages from Matrix rooms using enhanced mautrix-go features
-func ImportMessagesEnhanced(db DatabaseInterface, limit int) error {
-	// Initialize database connection
-	if err := InitDuckDB(); err != nil {
-		return fmt.Errorf("failed to initialize database: %w", err)
-	}
-	defer CloseDatabase()
-
-	// Get Matrix client
-	client, err := GetMatrixClient()
-	if err != nil {
-		return fmt.Errorf("failed to get Matrix client: %w", err)
-	}
-
-	// Get configured room IDs
-	roomIDs, err := GetMatrixRoomIDs()
-	if err != nil {
-		return fmt.Errorf("failed to get room IDs: %w", err)
-	}
-
-	// Create enhanced client
-	enhanced, err := NewEnhancedMatrixClient(
-		client.HomeserverURL.String(),
-		client.UserID,
-		client.AccessToken,
-		db,
-	)
-	if err != nil {
-		return fmt.Errorf("failed to create enhanced client: %w", err)
-	}
-
-	totalImported := 0
-
-	// Import from each room
-	for i, roomID := range roomIDs {
-		fmt.Printf("\n[%d/%d] Processing room: %s\n", i+1, len(roomIDs), roomID)
-
-		count, err := enhanced.importEventsFromRoom(roomID, limit)
-		if err != nil {
-			log.Printf("Error importing from room %s: %v", roomID, err)
-			continue
-		}
-		totalImported += count
-		fmt.Printf("✓ Imported %d messages from room %s\n", count, roomID)
-
-		// Show progress
-		if len(roomIDs) > 1 {
-			fmt.Printf("Progress: %d/%d rooms completed\n", i+1, len(roomIDs))
-		}
-	}
-
-	// Get total message count
-	totalCount, err := db.GetMessageCount(context.Background(), nil)
-	if err != nil {
-		log.Printf("Failed to count total messages: %v", err)
-	} else {
-		fmt.Printf("The database now has %d total messages\n", totalCount)
-	}
-
-	return nil
-}
+// importEventsFromRoom imports events from a specific room using enhanced mautrix-go features
 
 // importEventsFromRoom imports events from a specific room using enhanced features
 func (e *EnhancedMatrixClient) importEventsFromRoom(roomID string, limit int) (int, error) {
@@ -245,11 +185,6 @@ func (e *EnhancedMatrixClient) processEventBatchEnhanced(events []*event.Event, 
 	return importCount, nil
 }
 
-// isMessageEvent checks if an event type is a supported message event using mautrix constants (exported for testing)
-func (e *EnhancedMatrixClient) IsMessageEvent(eventType event.Type) bool {
-	return e.isMessageEvent(eventType)
-}
-
 // isMessageEvent checks if an event type is a supported message event using mautrix constants
 func (e *EnhancedMatrixClient) isMessageEvent(eventType event.Type) bool {
 	// Use mautrix built-in event type constants
@@ -261,11 +196,6 @@ func (e *EnhancedMatrixClient) isMessageEvent(eventType event.Type) bool {
 	default:
 		return false
 	}
-}
-
-// convertEventToMessageEnhanced converts a Matrix event using mautrix built-in parsers (exported for testing)
-func (e *EnhancedMatrixClient) ConvertEventToMessageEnhanced(evt *event.Event, roomID string) (*Message, error) {
-	return e.convertEventToMessageEnhanced(evt, roomID)
 }
 
 // convertEventToMessageEnhanced converts a Matrix event using mautrix built-in parsers

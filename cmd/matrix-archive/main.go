@@ -56,7 +56,7 @@ var listRoomsCmd = &cobra.Command{
 var importCmd = &cobra.Command{
 	Use:   "import",
 	Short: "Import messages from Matrix rooms into the database",
-	Long:  "Import messages from the configured Matrix rooms into MongoDB for archival.",
+	Long:  "Import messages from the configured Matrix rooms into DuckDB for archival.",
 	Run: func(cmd *cobra.Command, args []string) {
 		limit, _ := cmd.Flags().GetInt("limit")
 		if err := archive.ImportMessages(limit); err != nil {

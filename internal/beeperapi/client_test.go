@@ -71,24 +71,6 @@ func TestDoRequest_NilRequestAndResponse(t *testing.T) {
 	assert.Error(t, err) // Expected to fail due to auth/API differences
 }
 
-func TestDeleteBridge(t *testing.T) {
-	// This should fail since we don't have a real API
-	err := DeleteBridge("test.com", "test-bridge", "test-token")
-	assert.Error(t, err)
-}
-
-func TestPostBridgeState(t *testing.T) {
-	data := ReqPostBridgeState{
-		StateEvent: "CONNECTED",
-		Reason:     "test",
-		Info:       map[string]any{"test": "value"},
-	}
-
-	// This should fail since we don't have a real API
-	err := PostBridgeState("test.com", "testuser", "testbridge", "test-token", data)
-	assert.Error(t, err)
-}
-
 func TestWhoami(t *testing.T) {
 	// This should fail since we don't have a real API
 	_, err := Whoami("test.com", "test-token")
