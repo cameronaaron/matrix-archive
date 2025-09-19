@@ -16,35 +16,21 @@ func main() {
 
 	var rootCmd = &cobra.Command{
 		Use:   "matrix-archive",
-		Short: "Matrix Archive - Professional chat history management",
-		Long: `Matrix Archive is a comprehensive tool for importing, exporting, and managing Matrix chat histories.
+		Short: "Matrix Archive Tools - Import and export messages from Matrix rooms",
+		Long: `Matrix Archive Tools allows you to import messages from Matrix rooms
+into a database and export them in various formats for archival and research purposes.
 
-Features:
-  • Import and decrypt E2EE messages from Matrix/Beeper
-  • Export to multiple formats (HTML, JSON, YAML, TXT)  
-  • Advanced username mapping for bridge users
-  • Rich metadata extraction and professional templates
-  • Secure credential and encryption key management
-
-Usage Examples:
-  matrix-archive auth login                    # Authenticate with Beeper
-  matrix-archive import --room-id "!room:..."  # Import room messages
-  matrix-archive export archive.html           # Export to HTML
-  matrix-archive crypto recover-keys --recovery-key "key"  # Recover encryption keys`,
+Use this responsibly and ethically. Don't re-publish people's messages
+without their knowledge and consent.`,
 	}
 
 	rootCmd.AddCommand(listRoomsCmd)
 	rootCmd.AddCommand(importCmd)
 	rootCmd.AddCommand(exportCmd)
-	rootCmd.AddCommand(authCmd)
-	rootCmd.AddCommand(cryptoCmd)
-	rootCmd.AddCommand(mediaCmd)
-
-	// Add subcommands to groups
-	authCmd.AddCommand(authLoginCmd)
-	authCmd.AddCommand(authLogoutCmd)
-	cryptoCmd.AddCommand(cryptoRecoverKeysCmd)
-	mediaCmd.AddCommand(mediaDownloadCmd)
+	rootCmd.AddCommand(downloadImagesCmd)
+	rootCmd.AddCommand(beeperLoginCmd)
+	rootCmd.AddCommand(beeperLogoutCmd)
+	rootCmd.AddCommand(keyRecoveryCmd)
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Println(err)
@@ -53,11 +39,15 @@ Usage Examples:
 }
 
 var listRoomsCmd = &cobra.Command{
-	Use:   "list",
-	Short: "List available Matrix rooms",
-	Long:  "Display all Matrix rooms with their IDs and display names. Supports pattern filtering.",
+	Use:   "list [pattern]",
+	Short: "List room IDs and display names",
+	Long:  "List all Matrix rooms that the user has access to, optionally filtered by a regex pattern.",
+	Args:  cobra.MaximumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		pattern, _ := cmd.Flags().GetString("pattern")
+		pattern := ""
+		if len(args) > 0 {
+			pattern = args[0]
+		}
 		if err := archive.ListRooms(pattern); err != nil {
 			log.Fatal(err)
 		}
@@ -66,8 +56,8 @@ var listRoomsCmd = &cobra.Command{
 
 var importCmd = &cobra.Command{
 	Use:   "import",
-	Short: "Import Matrix messages to local database",
-	Long:  "Import and decrypt Matrix messages from specified rooms or all joined rooms. Supports E2EE message decryption.",
+	Short: "Import messages from Matrix rooms into the database",
+	Long:  "Import messages from Matrix rooms into DuckDB for archival. If no room ID is specified, imports from all joined rooms.",
 	Run: func(cmd *cobra.Command, args []string) {
 		limit, _ := cmd.Flags().GetInt("limit")
 		roomID, _ := cmd.Flags().GetString("room-id")
@@ -80,8 +70,12 @@ var importCmd = &cobra.Command{
 var exportCmd = &cobra.Command{
 	Use:   "export [filename]",
 	Short: "Export messages to various formats",
-	Long:  "Export stored messages to HTML, JSON, YAML, or TXT format with rich metadata and professional templates. Supports advanced username mapping for bridge users.",
-	Args:  cobra.ExactArgs(1),
+	Long: `Export messages from the database to various formats based on file extension:
+- .html: HTML format
+- .txt: Plain text format
+- .json: JSON format
+- .yaml: YAML format`,
+	Args: cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		roomID, _ := cmd.Flags().GetString("room-id")
 		localImages, _ := cmd.Flags().GetBool("local-images")
@@ -91,34 +85,27 @@ var exportCmd = &cobra.Command{
 	},
 }
 
-var mediaCmd = &cobra.Command{
-	Use:   "media",
-	Short: "Media file management",
-	Long:  "Download and manage media files from Matrix messages.",
-}
-
-var mediaDownloadCmd = &cobra.Command{
-	Use:   "download",
-	Short: "Download media files from messages",
-	Long:  "Download images and other media files referenced in Matrix messages to local storage.",
+var downloadImagesCmd = &cobra.Command{
+	Use:   "download-images [output-dir]",
+	Short: "Download images from messages",
+	Long:  "Download all images referenced in messages to a local directory.",
+	Args:  cobra.MaximumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
+		outputDir := ""
+		if len(args) > 0 {
+			outputDir = args[0]
+		}
 		thumbnails, _ := cmd.Flags().GetBool("thumbnails")
-		if err := archive.DownloadImages("", thumbnails); err != nil {
+		if err := archive.DownloadImages(outputDir, thumbnails); err != nil {
 			log.Fatal(err)
 		}
 	},
 }
 
-var authCmd = &cobra.Command{
-	Use:   "auth",
-	Short: "Authentication management",
-	Long:  "Manage authentication credentials for Matrix and Beeper services.",
-}
-
-var authLoginCmd = &cobra.Command{
-	Use:   "login",
+var beeperLoginCmd = &cobra.Command{
+	Use:   "beeper-login",
 	Short: "Authenticate with Beeper",
-	Long:  "Authenticate with Beeper using email and verification code.",
+	Long:  "Authenticate with Beeper using email and passcode.",
 	Run: func(cmd *cobra.Command, args []string) {
 		domain, _ := cmd.Flags().GetString("domain")
 		if err := archive.PerformBeeperLogin(domain, false); err != nil {
@@ -127,10 +114,10 @@ var authLoginCmd = &cobra.Command{
 	},
 }
 
-var authLogoutCmd = &cobra.Command{
-	Use:   "logout",
-	Short: "Clear authentication credentials",
-	Long:  "Clear stored Beeper authentication credentials from local storage.",
+var beeperLogoutCmd = &cobra.Command{
+	Use:   "beeper-logout",
+	Short: "Clear Beeper credentials",
+	Long:  "Clear stored Beeper credentials.",
 	Run: func(cmd *cobra.Command, args []string) {
 		domain, _ := cmd.Flags().GetString("domain")
 		if err := archive.PerformBeeperLogout(domain); err != nil {
@@ -139,15 +126,9 @@ var authLogoutCmd = &cobra.Command{
 	},
 }
 
-var cryptoCmd = &cobra.Command{
-	Use:   "crypto",
-	Short: "Encryption and key management",
-	Long:  "Manage encryption keys and cryptographic operations for Matrix message decryption.",
-}
-
-var cryptoRecoverKeysCmd = &cobra.Command{
-	Use:   "recover-keys",
-	Short: "Recover encryption keys from backup",
+var keyRecoveryCmd = &cobra.Command{
+	Use:   "key-recovery",
+	Short: "Recover encryption keys using Matrix key backup",
 	Long:  "Recover encryption keys from Matrix key backup using a recovery key to decrypt historical messages.",
 	Run: func(cmd *cobra.Command, args []string) {
 		recoveryKey, _ := cmd.Flags().GetString("recovery-key")
@@ -168,9 +149,9 @@ func init() {
 	importCmd.Flags().String("room-id", "", "Import from a specific room (optional, imports all joined rooms if not specified)")
 	exportCmd.Flags().String("room-id", "", "Export from a specific room (optional)")
 	exportCmd.Flags().Bool("local-images", true, "Use local image paths instead of Matrix URLs")
-	mediaDownloadCmd.Flags().Bool("thumbnails", true, "Download thumbnails instead of full images")
-	authLoginCmd.Flags().String("domain", "beeper.com", "Beeper domain to authenticate with")
-	authLogoutCmd.Flags().String("domain", "beeper.com", "Beeper domain to clear credentials for")
-	cryptoRecoverKeysCmd.Flags().String("recovery-key", "", "Matrix key backup recovery key (required)")
-	cryptoRecoverKeysCmd.Flags().String("room-id", "", "Specific room ID to decrypt messages for (optional)")
+	downloadImagesCmd.Flags().Bool("thumbnails", true, "Download thumbnails instead of full images")
+	beeperLoginCmd.Flags().String("domain", "beeper.com", "Beeper domain to authenticate with")
+	beeperLogoutCmd.Flags().String("domain", "beeper.com", "Beeper domain to clear credentials for")
+	keyRecoveryCmd.Flags().String("recovery-key", "", "Matrix key backup recovery key (required)")
+	keyRecoveryCmd.Flags().String("room-id", "", "Specific room ID to decrypt messages for (optional)")
 }

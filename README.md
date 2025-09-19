@@ -1,17 +1,8 @@
-# Matrix Archive - Professional Chat History Management
+# Matrix Archive Tools
 
-A comprehensive tool for importing, exporting, and managing Matrix chat histories with enterprise-grade features.
+Import messages from Matrix rooms for research, archival, and preservation.
 
 A professional Go application using idiomatic project structure and the [mautrix-go](https://github.com/mautrix/go) library for Matrix client functionality with end-to-end encryption support.
-
-## ✨ Key Features
-
-- **End-to-End Encryption Support**: Full E2EE message decryption using Matrix key backup
-- **Professional Export Formats**: HTML, JSON, YAML, and TXT with rich metadata
-- **Advanced Username Mapping**: Intelligent bridge user resolution for Discord/Telegram bridges  
-- **Secure Authentication**: Beeper OAuth integration with credential management
-- **Rich Template System**: Beautiful, responsive HTML exports with professional styling
-- **Comprehensive CLI**: Intuitive command grouping with `auth`, `crypto`, and `media` subcommands
 
 Originally developed at [Dinacon 2018](https://www.dinacon.org) for use by the documentation team.
 
@@ -56,67 +47,35 @@ make test           # Run the test suite
 make coverage       # Run tests with coverage
 ```
 
-## Quick Start
+### Environment Variables
 
-### 1. Authentication
-```bash
-# Authenticate with Beeper
-./matrix-archive auth login
+Set these environment variables or create a `.env` file:
 
-# Authenticate with specific domain  
-./matrix-archive auth login --domain beeper.com
+#### Beeper Authentication
+- Run `./matrix-archive beeper-login` to authenticate with Beeper
+- Authentication credentials are automatically saved for future use
 
-# Clear credentials
-./matrix-archive auth logout
+#### Optional Variables
+- `DUCKDB_URL`: DuckDB database file path (optional, defaults to `matrix_archive.duckdb`)
+- `BEEPER_DOMAIN`: Beeper domain (optional, defaults to `beeper.com`)
+
+Example `.env` file:
+```env
+DUCKDB_URL=matrix_archive.duckdb
+BEEPER_DOMAIN=beeper.com
 ```
 
-### 2. Import Messages
-```bash
-# Import from all rooms
-./matrix-archive import
+To find room IDs, run `./matrix-archive list` to list all rooms you have access to.
 
-# Import from specific room with limit
-./matrix-archive import --room-id "!room:example.com" --limit 1000
-```
-
-### 3. Export Archives  
-```bash
-# Export to HTML (recommended)
-./matrix-archive export archive.html --room-id "!room:example.com"
-
-# Export to different formats
-./matrix-archive export data.json    # JSON format
-./matrix-archive export data.yaml    # YAML format  
-./matrix-archive export data.txt     # Plain text
-```
-
-### 4. Key Recovery (for E2EE rooms)
-```bash
-# Recover encryption keys from backup
-./matrix-archive crypto recover-keys --recovery-key "your-recovery-key"
-
-# Recover keys for specific room
-./matrix-archive crypto recover-keys --recovery-key "key" --room-id "!room:example.com"
-```
-
-### 5. Media Download
-```bash
-# Download media files
-./matrix-archive media download
-
-# Download thumbnails only
-./matrix-archive media download --thumbnails
-```
-
-## Detailed Usage
+## Usage
 
 ### Authentication
 
 ```bash
-./matrix-archive auth login [--domain beeper.com]
+./matrix-archive beeper-login [--domain beeper.com]
 ```
 
-Authenticates with Beeper using email and verification code. This will:
+Authenticates with Beeper using email and passcode. This will:
 - Prompt for your Beeper email address
 - Send a login code to your email
 - Save your credentials for future use
@@ -124,7 +83,7 @@ Authenticates with Beeper using email and verification code. This will:
 To clear saved credentials:
 
 ```bash
-./matrix-archive auth logout [--domain beeper.com]
+./matrix-archive beeper-logout [--domain beeper.com]
 ```
 
 ### List Rooms

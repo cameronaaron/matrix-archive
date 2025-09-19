@@ -253,8 +253,8 @@ func convertToExportMessages(messages []*Message, roomID string, localImages boo
 	return exportMessages, nil
 }
 
-// BridgeUserCorrelation stores correlation data for bridge users
-type BridgeUserCorrelation struct {
+// bridgeUserCorrelation stores correlation data for bridge users
+type bridgeUserCorrelation struct {
 	username   string
 	platform   string
 	confidence float64
@@ -267,29 +267,24 @@ func buildBridgeUserMapping(messages []*Message) map[string]string {
 	bridgeUserMap := make(map[string]string)
 	
 	// Keep track of all correlations for each bridge user
-	bridgeCorrelations := make(map[string][]BridgeUserCorrelation)
+	bridgeCorrelations := make(map[string][]bridgeUserCorrelation)
 	
-	// Comprehensive regex patterns to match Discord/Telegram usernames in message content
+	// Regex patterns to match Discord/Telegram usernames in message content
 	usernameRegex := regexp.MustCompile(`<([^@][^>]+):(discord|telegram)>`)
 	htmlUsernameRegex := regexp.MustCompile(`&lt;([^@][^&]+):(discord|telegram)&gt;`)
 	
-	// Enhanced patterns for bridge bot replies and mentions
+	// Patterns for bridge bot replies and mentions
 	bridgeReplyRegex := regexp.MustCompile(`\(re @GrapheneOSBridgeBot: <([^@][^>]+):(discord|telegram)>`)
 	htmlBridgeReplyRegex := regexp.MustCompile(`\(re @GrapheneOSBridgeBot: &lt;([^@][^&]+):(discord|telegram)&gt;`)
 	
-	// Additional patterns for various mention formats
-	hrefUsernameRegex := regexp.MustCompile(`<a href="([^@][^"]+):(discord|telegram)">([^<]+)</a>`)
-	bridgeMentionRegex := regexp.MustCompile(`@GrapheneOSBridgeBot:\s*<([^@][^>]+):(discord|telegram)>`)
-	htmlBridgeMentionRegex := regexp.MustCompile(`@GrapheneOSBridgeBot:\s*&lt;([^@][^&]+):(discord|telegram)&gt;`)
-	bridgeReplacementRegex := regexp.MustCompile(`@GrapheneOSBridgeBot:\s*([^:\s]+):(discord|telegram)`)
-	multiplePlatformRegex := regexp.MustCompile(`([^@\s]+):(discord|telegram|matrix\.org)`)
-	
-	// Track usernames to Discord IDs for cross-correlation
-	discordUsernameToIDs := make(map[string][]string)
-	
-	// First pass: collect all username correlations with context and timing using comprehensive patterns
+	// First pass: collect all username correlations with context and timing
 	for _, msg := range messages {
 		var textToScan []string
+		
+		// Skip if not a bridge user
+		if !strings.Contains(msg.Sender, "discordgo_") {
+			continue
+		}
 		
 		// Collect text content to scan
 		if bodyInterface, exists := msg.Content["body"]; exists {
@@ -304,90 +299,44 @@ func buildBridgeUserMapping(messages []*Message) map[string]string {
 			}
 		}
 		
-		// Scan all text content for comprehensive username patterns
+		// Scan all text content for username patterns
 		for _, text := range textToScan {
-			// Pattern 1: Direct mentions of usernames in messages (high confidence for bridge users)
-			if strings.Contains(msg.Sender, "discordgo_") {
-				matches := usernameRegex.FindAllStringSubmatch(text, -1)
-				for _, match := range matches {
-					if len(match) >= 3 {
-						username := match[1]
-						platform := match[2]
-						
-						if platform == "discord" {
-							correlation := BridgeUserCorrelation{
-								username:   username,
-								platform:   platform,
-								confidence: 0.8, // High confidence for self-mentions
-								timestamp:  msg.Timestamp,
-								context:    "self-mention",
-							}
-							bridgeCorrelations[msg.Sender] = append(bridgeCorrelations[msg.Sender], correlation)
-							discordUsernameToIDs[username] = append(discordUsernameToIDs[username], msg.Sender)
-						}
-					}
-				}
-				
-				// HTML-encoded patterns
-				matches = htmlUsernameRegex.FindAllStringSubmatch(text, -1)
-				for _, match := range matches {
-					if len(match) >= 3 {
-						username := match[1]
-						platform := match[2]
-						
-						if platform == "discord" {
-							correlation := BridgeUserCorrelation{
-								username:   username,
-								platform:   platform,
-								confidence: 0.8,
-								timestamp:  msg.Timestamp,
-								context:    "self-mention-html",
-							}
-							bridgeCorrelations[msg.Sender] = append(bridgeCorrelations[msg.Sender], correlation)
-							discordUsernameToIDs[username] = append(discordUsernameToIDs[username], msg.Sender)
-						}
-					}
-				}
-			}
-			
-			// Pattern 2: Href link patterns from formatted messages
-			matches := hrefUsernameRegex.FindAllStringSubmatch(text, -1)
-			for _, match := range matches {
-				if len(match) >= 4 {
-					username := match[1]
-					platform := match[2]
-					
-					if platform == "discord" && strings.Contains(msg.Sender, "discordgo_") {
-						correlation := BridgeUserCorrelation{
-							username:   username,
-							platform:   platform,
-							confidence: 0.7,
-							timestamp:  msg.Timestamp,
-							context:    "href-link",
-						}
-						bridgeCorrelations[msg.Sender] = append(bridgeCorrelations[msg.Sender], correlation)
-						discordUsernameToIDs[username] = append(discordUsernameToIDs[username], msg.Sender)
-					}
-				}
-			}
-			
-			// Pattern 3: Multi-platform pattern matching
-			matches = multiplePlatformRegex.FindAllStringSubmatch(text, -1)
+			// Direct mentions of usernames in the sender's own messages (high confidence)
+			matches := usernameRegex.FindAllStringSubmatch(text, -1)
 			for _, match := range matches {
 				if len(match) >= 3 {
 					username := match[1]
 					platform := match[2]
 					
-					if platform == "discord" && strings.Contains(msg.Sender, "discordgo_") {
-						correlation := BridgeUserCorrelation{
+					if platform == "discord" {
+						correlation := bridgeUserCorrelation{
 							username:   username,
 							platform:   platform,
-							confidence: 0.6,
+							confidence: 0.7, // Medium confidence for self-mentions
 							timestamp:  msg.Timestamp,
-							context:    "multi-platform",
+							context:    "self-mention",
 						}
 						bridgeCorrelations[msg.Sender] = append(bridgeCorrelations[msg.Sender], correlation)
-						discordUsernameToIDs[username] = append(discordUsernameToIDs[username], msg.Sender)
+					}
+				}
+			}
+			
+			// HTML-encoded patterns
+			matches = htmlUsernameRegex.FindAllStringSubmatch(text, -1)
+			for _, match := range matches {
+				if len(match) >= 3 {
+					username := match[1]
+					platform := match[2]
+					
+					if platform == "discord" {
+						correlation := bridgeUserCorrelation{
+							username:   username,
+							platform:   platform,
+							confidence: 0.7,
+							timestamp:  msg.Timestamp,
+							context:    "self-mention-html",
+						}
+						bridgeCorrelations[msg.Sender] = append(bridgeCorrelations[msg.Sender], correlation)
 					}
 				}
 			}
@@ -407,26 +356,19 @@ func buildBridgeUserMapping(messages []*Message) map[string]string {
 						platform := match[2]
 						
 						if platform == "discord" {
-							// Look for bridge users in nearby messages (within 10 messages for better coverage)
-							for j := max(0, i-10); j <= min(len(messages)-1, i+10); j++ {
+							// Look for bridge users in nearby messages (within 5 messages)
+							for j := max(0, i-5); j <= min(len(messages)-1, i+5); j++ {
 								nearbyMsg := messages[j]
 								if strings.Contains(nearbyMsg.Sender, "discordgo_") {
-									// Calculate distance-based confidence
-									distance := abs(i - j)
-									confidence := 1.0 - (float64(distance) * 0.05) // Decrease confidence with distance
-									if confidence < 0.3 {
-										confidence = 0.3
-									}
-									
-									correlation := BridgeUserCorrelation{
+									// High confidence correlation based on temporal proximity to bridge reply
+									correlation := bridgeUserCorrelation{
 										username:   username,
 										platform:   platform,
-										confidence: confidence,
+										confidence: 0.9, // High confidence for temporal proximity
 										timestamp:  nearbyMsg.Timestamp,
-										context:    fmt.Sprintf("bridge-reply-proximity-dist-%d", distance),
+										context:    "bridge-reply-proximity",
 									}
 									bridgeCorrelations[nearbyMsg.Sender] = append(bridgeCorrelations[nearbyMsg.Sender], correlation)
-									discordUsernameToIDs[username] = append(discordUsernameToIDs[username], nearbyMsg.Sender)
 								}
 							}
 						}
@@ -442,92 +384,19 @@ func buildBridgeUserMapping(messages []*Message) map[string]string {
 						
 						if platform == "discord" {
 							// Look for bridge users in nearby messages
-							for j := max(0, i-10); j <= min(len(messages)-1, i+10); j++ {
+							for j := max(0, i-5); j <= min(len(messages)-1, i+5); j++ {
 								nearbyMsg := messages[j]
 								if strings.Contains(nearbyMsg.Sender, "discordgo_") {
-									distance := abs(i - j)
-									confidence := 1.0 - (float64(distance) * 0.05)
-									if confidence < 0.3 {
-										confidence = 0.3
-									}
-									
-									correlation := BridgeUserCorrelation{
+									correlation := bridgeUserCorrelation{
 										username:   username,
 										platform:   platform,
-										confidence: confidence,
+										confidence: 0.9,
 										timestamp:  nearbyMsg.Timestamp,
-										context:    fmt.Sprintf("bridge-reply-proximity-html-dist-%d", distance),
+										context:    "bridge-reply-proximity-html",
 									}
 									bridgeCorrelations[nearbyMsg.Sender] = append(bridgeCorrelations[nearbyMsg.Sender], correlation)
-									discordUsernameToIDs[username] = append(discordUsernameToIDs[username], nearbyMsg.Sender)
 								}
 							}
-						}
-					}
-				}
-				
-				// Bridge bot direct mentions
-				matches = bridgeMentionRegex.FindAllStringSubmatch(body, -1)
-				for _, match := range matches {
-					if len(match) >= 3 {
-						username := match[1]
-						platform := match[2]
-						
-						if platform == "discord" {
-							// Associate with sender if it's a bridge user
-							if strings.Contains(msg.Sender, "discordgo_") {
-								correlation := BridgeUserCorrelation{
-									username:   username,
-									platform:   platform,
-									confidence: 0.9,
-									timestamp:  msg.Timestamp,
-									context:    "bridge-mention",
-								}
-								bridgeCorrelations[msg.Sender] = append(bridgeCorrelations[msg.Sender], correlation)
-								discordUsernameToIDs[username] = append(discordUsernameToIDs[username], msg.Sender)
-							}
-						}
-					}
-				}
-				
-				// HTML bridge bot mentions
-				matches = htmlBridgeMentionRegex.FindAllStringSubmatch(body, -1)
-				for _, match := range matches {
-					if len(match) >= 3 {
-						username := match[1]
-						platform := match[2]
-						
-						if platform == "discord" && strings.Contains(msg.Sender, "discordgo_") {
-							correlation := BridgeUserCorrelation{
-								username:   username,
-								platform:   platform,
-								confidence: 0.9,
-								timestamp:  msg.Timestamp,
-								context:    "bridge-mention-html",
-							}
-							bridgeCorrelations[msg.Sender] = append(bridgeCorrelations[msg.Sender], correlation)
-							discordUsernameToIDs[username] = append(discordUsernameToIDs[username], msg.Sender)
-						}
-					}
-				}
-				
-				// Bridge replacement patterns
-				matches = bridgeReplacementRegex.FindAllStringSubmatch(body, -1)
-				for _, match := range matches {
-					if len(match) >= 3 {
-						username := match[1]
-						platform := match[2]
-						
-						if platform == "discord" && strings.Contains(msg.Sender, "discordgo_") {
-							correlation := BridgeUserCorrelation{
-								username:   username,
-								platform:   platform,
-								confidence: 0.7,
-								timestamp:  msg.Timestamp,
-								context:    "bridge-replacement",
-							}
-							bridgeCorrelations[msg.Sender] = append(bridgeCorrelations[msg.Sender], correlation)
-							discordUsernameToIDs[username] = append(discordUsernameToIDs[username], msg.Sender)
 						}
 					}
 				}
@@ -774,13 +643,6 @@ func min(a, b int) int {
 		return a
 	}
 	return b
-}
-
-func abs(x int) int {
-	if x < 0 {
-		return -x
-	}
-	return x
 }
 
 func max(a, b int) int {

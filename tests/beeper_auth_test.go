@@ -168,7 +168,6 @@ func TestBeeperAuth_SaveCredentials_EnvironmentVariables(t *testing.T) {
 	originalToken := os.Getenv("BEEPER_TOKEN")
 	originalEmail := os.Getenv("BEEPER_EMAIL")
 	originalUsername := os.Getenv("BEEPER_USERNAME")
-	originalMatrixUser := os.Getenv("MATRIX_USER")
 
 	defer func() {
 		if originalToken != "" {
@@ -185,11 +184,6 @@ func TestBeeperAuth_SaveCredentials_EnvironmentVariables(t *testing.T) {
 			os.Setenv("BEEPER_USERNAME", originalUsername)
 		} else {
 			os.Unsetenv("BEEPER_USERNAME")
-		}
-		if originalMatrixUser != "" {
-			os.Setenv("MATRIX_USER", originalMatrixUser)
-		} else {
-			os.Unsetenv("MATRIX_USER")
 		}
 	}()
 
@@ -209,13 +203,12 @@ func TestBeeperAuth_SaveCredentials_EnvironmentVariables(t *testing.T) {
 	assert.Equal(t, "test-token", os.Getenv("BEEPER_TOKEN"))
 	assert.Equal(t, "test@example.com", os.Getenv("BEEPER_EMAIL"))
 	assert.Equal(t, "testuser", os.Getenv("BEEPER_USERNAME"))
-	assert.Equal(t, "@testuser:test.com", os.Getenv("MATRIX_USER"))
 }
 
 func TestBeeperAuth_GetMatrixClient_NotAuthenticated(t *testing.T) {
 	auth := archive.NewBeeperAuth("test.com")
 
-	client, err := auth.GetMatrixClientWithCrypto()
+	client, err := auth.GetMatrixClient()
 	assert.Error(t, err)
 	assert.Nil(t, client)
 	assert.Contains(t, err.Error(), "not authenticated")

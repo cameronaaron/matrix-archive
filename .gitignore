@@ -1,78 +1,47 @@
-# Matrix Archive - Professional .gitignore
-# ========================================
-
-# Build outputs and binaries
-/bin/
+# Build outputs
+/cmd/matrix-archive/matrix-archive
+/bin/matrix-archive
 /matrix-archive
-matrix-archive-*
+matrix-archive-test
 *.exe
 *.exe~
 *.dll
 *.so
 *.dylib
 
-# Go specific
-vendor/
-*.test
-*.out
-*.prof
-
-# Test outputs and development artifacts
+# Test outputs and artifacts
 coverage.html
 coverage.out
 *.log
-*-test.html
-*-test.json
-*-export.*
-*-archive.*
-*-analysis.*
-test-*.html
-test-*.json
-analysis-*.json
-bridge-*.json
-temp-*.json
-enhanced-*.html
-perfect-*.html
-ultimate-*.html
-final-*.html
-beautiful-*.html
-decrypted-*.html
+images_test/
 
-# Images and media downloads
-images/
+# Download directories
 thumbnails/
-downloads/
-media/
+images/
 
-# Database files (all variants)
+# Environment files
+.env
+.env.local
+
+# Credential and secret files
+*credentials*.json
+beeper-credentials-*.json
+*-credentials.json
+*-secret*.json
+*-auth*.json
+
+# Export and test files
+*-export.json
+*-test*.json
+beeper-local-*.json
+beeper-support-*.json
+
+# Database files
 *.db
 *.db-shm
 *.db-wal
-*.sqlite
-*.sqlite3
-*.duckdb*
 crypto_store*
-matrix_archive.*
-archive.db*
-
-# Credentials and authentication (comprehensive)
-.env
-.env.*
-!.env.example
-*credentials*.json
-*-credentials-*.json
-*-auth*.json
-*-secret*.json
-*-token*.json
-beeper-credentials-*.json
-matrix-credentials-*.json
-
-# Matrix/Beeper specific data
-*.mxc
-room-*.json
-user-*.json
-*-keys.json
-*-backup.json
+matrix_archive.duckdb*
 
 # OS generated files
 .DS_Store
@@ -82,52 +51,46 @@ user-*.json
 .Trashes
 ehthumbs.db
 Thumbs.db
-desktop.ini
 
-# IDE and editor files
+# Python artifacts (if any)
+__pycache__/
+*.pyc
+*.pyo
+
+# Temporary files
+*.tmp
+*.temp
+check_messages.js
+gomuks-main/
+
+# IDE files
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
-.vim/
-.emacs.d/
 
-# Temporary and backup files
-*.tmp
-*.temp
+# Go temporary files
+*.test
+
+# Documentation artifacts
+BEEPER-GUIDE.md
+BEEPER-INTEGRATION-SUMMARY.md
+CONVERSION-SUMMARY.md
+E2E_TEST_REPORT.md
+PRODUCTION_FIXES_COMPLETE.md
+
+# Backup files
 *.bak
 *.backup
 *~
-\#*\#
-.#*
 
-# Documentation artifacts (development only)
-*-GUIDE.md
-*-INTEGRATION-*.md
-*-SUMMARY.md
-*-REPORT.md
-*-COMPLETE.md
-BEEPER-*.md
-CONVERSION-*.md
-E2E_*.md
-PRODUCTION_*.md
-
-# Language specific
-__pycache__/
-*.pyc
-*.pyo
+# Node.js (if any)
 node_modules/
 npm-debug.log
 yarn-error.log
 
-# Local development tools
-check_*.js
-debug_*
-local_test*
-dev_*
-
-# Archive exports (users should manage these explicitly)
-exports/
-archives/
-output/
+# Generated binaries and vendor
+vendor/
+tests/matrix_archive.duckdb
+test_export.html

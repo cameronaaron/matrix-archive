@@ -89,12 +89,12 @@ func RecoverKeysFromBackup(recoveryKey string) error {
 	failed := 0
 
 	// Collect sessions before saving them
-	type SessionEntry struct {
+	type sessionEntry struct {
 		roomID    id.RoomID
 		sessionID id.SessionID
 		entry     *crypto.InboundGroupSession
 	}
-	var sessions []SessionEntry
+	var sessions []sessionEntry
 
 	for roomID, roomData := range roomKeys.Rooms {
 		// Get encryption event for this room (needed for session import)
@@ -120,7 +120,7 @@ func RecoverKeysFromBackup(recoveryKey string) error {
 			}
 
 			// Collect the session for later saving
-			sessions = append(sessions, SessionEntry{
+			sessions = append(sessions, sessionEntry{
 				roomID:    id.RoomID(roomID),
 				sessionID: id.SessionID(sessionID),
 				entry:     importedSession,
