@@ -215,7 +215,7 @@ func TestBeeperAuth_SaveCredentials_EnvironmentVariables(t *testing.T) {
 func TestBeeperAuth_GetMatrixClient_NotAuthenticated(t *testing.T) {
 	auth := archive.NewBeeperAuth("test.com")
 
-	client, err := auth.GetMatrixClient()
+	client, err := auth.GetMatrixClientWithCrypto()
 	assert.Error(t, err)
 	assert.Nil(t, client)
 	assert.Contains(t, err.Error(), "not authenticated")
