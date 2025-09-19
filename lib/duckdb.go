@@ -64,6 +64,11 @@ func (d *DuckDBDatabase) Connect(ctx context.Context) error {
 		return fmt.Errorf("failed to ping DuckDB: %w", err)
 	}
 
+	// Install and load JSON extension for DuckDB
+	if _, err := d.db.ExecContext(ctx, "INSTALL json; LOAD json;"); err != nil {
+		return fmt.Errorf("failed to install JSON extension: %w", err)
+	}
+
 	// Create tables if they don't exist
 	if err := d.CreateTables(ctx); err != nil {
 		return fmt.Errorf("failed to create tables: %w", err)

@@ -44,7 +44,8 @@ func (rl *RateLimiter) Wait() {
 }
 
 // ImportMessages imports messages from Matrix rooms into the database
-func ImportMessages(limit int) error {
+// If roomID is empty, imports from all joined rooms
+func ImportMessages(limit int, roomID string) error {
 	// Initialize database connection with DuckDB
 	if err := InitDuckDB(); err != nil {
 		return fmt.Errorf("failed to initialize database: %w", err)
@@ -58,20 +59,29 @@ func ImportMessages(limit int) error {
 	}
 
 	// Use enhanced client for better mautrix-go integration
-	enhanced, err := NewEnhancedMatrixClient(
-		client.HomeserverURL.String(),
-		client.UserID,
-		client.AccessToken,
-		GetDatabase(),
-	)
+	enhanced, err := NewEnhancedMatrixClient(client, GetDatabase())
 	if err != nil {
 		return fmt.Errorf("failed to create enhanced client: %w", err)
 	}
 
-	// Get configured room IDs
-	roomIDs, err := GetMatrixRoomIDs()
-	if err != nil {
-		return fmt.Errorf("failed to get room IDs: %w", err)
+	// Get room IDs to process
+	var roomIDs []string
+	if roomID != "" {
+		// Import from specific room
+		roomIDs = []string{roomID}
+	} else {
+		// Import from all joined rooms
+		resp, err := client.JoinedRooms(context.Background())
+		if err != nil {
+			return fmt.Errorf("failed to get joined rooms: %w", err)
+		}
+		for _, rid := range resp.JoinedRooms {
+			roomIDs = append(roomIDs, string(rid))
+		}
+		if len(roomIDs) == 0 {
+			return fmt.Errorf("no rooms found to import from")
+		}
+		fmt.Printf("Found %d joined rooms to import from\n", len(roomIDs))
 	}
 
 	totalImported := 0
@@ -102,6 +112,60 @@ func ImportMessages(limit int) error {
 		fmt.Printf("The database now has %d total messages\n", totalCount)
 	}
 
+	return nil
+}
+
+// ImportMessagesFromSpecificRoom imports messages from a specific room
+func ImportMessagesFromSpecificRoom(roomID string, limit int) error {
+	// Initialize database connection with DuckDB
+	if err := InitDuckDB(); err != nil {
+		return fmt.Errorf("failed to initialize database: %w", err)
+	}
+	defer CloseDatabase()
+
+	// Get Matrix client
+	client, err := GetMatrixClient()
+	if err != nil {
+		return fmt.Errorf("failed to get Matrix client: %w", err)
+	}
+
+	// Use enhanced client for better mautrix-go integration
+	enhanced, err := NewEnhancedMatrixClient(client, GetDatabase())
+	if err != nil {
+		return fmt.Errorf("failed to create enhanced client: %w", err)
+	}
+
+	// Import from the specific room
+	count, err := enhanced.importEventsFromRoom(roomID, limit)
+	if err != nil {
+		return fmt.Errorf("failed to import from room %s: %w", roomID, err)
+	}
+
+	fmt.Printf("✓ Imported %d messages from room %s\n", count, roomID)
+	return nil
+}
+
+// ImportMessagesFromSpecificRoomWithoutClosing imports messages from a specific room without closing the database
+func ImportMessagesFromSpecificRoomWithoutClosing(roomID string, limit int) error {
+	// Get Matrix client
+	client, err := GetMatrixClient()
+	if err != nil {
+		return fmt.Errorf("failed to get Matrix client: %w", err)
+	}
+
+	// Use enhanced client for better mautrix-go integration
+	enhanced, err := NewEnhancedMatrixClient(client, GetDatabase())
+	if err != nil {
+		return fmt.Errorf("failed to create enhanced client: %w", err)
+	}
+
+	// Import from the specific room
+	count, err := enhanced.importEventsFromRoom(roomID, limit)
+	if err != nil {
+		return fmt.Errorf("failed to import from room %s: %w", roomID, err)
+	}
+
+	fmt.Printf("✓ Imported %d messages from room %s\n", count, roomID)
 	return nil
 }
 
@@ -136,5 +200,3 @@ func convertEventToMessage(evt *event.Event, roomID string) (*Message, error) {
 
 	return message, nil
 }
-
-

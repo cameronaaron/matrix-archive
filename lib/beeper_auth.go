@@ -2,7 +2,6 @@ package archive
 
 import (
 	"bufio"
-	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -17,23 +16,25 @@ import (
 
 // BeeperAuth handles Beeper authentication
 type BeeperAuth struct {
-	BaseDomain   string
-	Email        string
-	Token        string
-	Whoami       *beeperapi.RespWhoami
-	MatrixToken  string // Cache the Matrix access token
-	MatrixUserID string // Cache the Matrix user ID
+	BaseDomain     string
+	Email          string
+	Token          string
+	Whoami         *beeperapi.RespWhoami
+	MatrixToken    string // Cache the Matrix access token
+	MatrixUserID   string // Cache the Matrix user ID
+	MatrixDeviceID string // Cache the Matrix device ID
 }
 
 // BeeperCredentials represents saved credentials
 type BeeperCredentials struct {
-	BaseDomain   string                `json:"base_domain"`
-	Email        string                `json:"email"`
-	Token        string                `json:"token"`
-	Username     string                `json:"username"`
-	Whoami       *beeperapi.RespWhoami `json:"whoami,omitempty"`
-	MatrixToken  string                `json:"matrix_token,omitempty"`
-	MatrixUserID string                `json:"matrix_user_id,omitempty"`
+	BaseDomain     string                `json:"base_domain"`
+	Email          string                `json:"email"`
+	Token          string                `json:"token"`
+	Username       string                `json:"username"`
+	Whoami         *beeperapi.RespWhoami `json:"whoami,omitempty"`
+	MatrixToken    string                `json:"matrix_token,omitempty"`
+	MatrixUserID   string                `json:"matrix_user_id,omitempty"`
+	MatrixDeviceID string                `json:"matrix_device_id,omitempty"`
 }
 
 // NewBeeperAuth creates a new BeeperAuth instance
@@ -103,8 +104,8 @@ func (b *BeeperAuth) Login() error {
 	return nil
 }
 
-// GetMatrixClient creates a Matrix client using Beeper authentication
-func (b *BeeperAuth) GetMatrixClient() (*mautrix.Client, error) {
+// GetMatrixClientWithCrypto creates a Matrix client with crypto using the helper approach
+func (b *BeeperAuth) GetMatrixClientWithCrypto() (*mautrix.Client, error) {
 	if b.Token == "" || b.Whoami == nil {
 		return nil, fmt.Errorf("not authenticated - call Login() first")
 	}
@@ -112,48 +113,38 @@ func (b *BeeperAuth) GetMatrixClient() (*mautrix.Client, error) {
 	// The correct Matrix server for Beeper
 	matrixHost := "https://matrix.beeper.com"
 
-	// Try to use cached Matrix token first
-	if b.MatrixToken != "" && b.MatrixUserID != "" {
-		userID := id.UserID(b.MatrixUserID)
-		client, err := mautrix.NewClient(matrixHost, userID, b.MatrixToken)
-		if err == nil {
-			// Test the connection
-			_, err = client.Whoami(context.Background())
-			if err == nil {
-				fmt.Printf("Matrix connection verified using cached token. User ID: %s\n", b.MatrixUserID)
-				return client, nil
-			}
-		}
-		// Cached token failed, clear it and get a new one
-		fmt.Printf("Cached Matrix token invalid, getting new one...\n")
-		b.MatrixToken = ""
-		b.MatrixUserID = ""
+	// Create a basic client first
+	client, err := mautrix.NewClient(matrixHost, "", "")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create Matrix client: %w", err)
 	}
 
-	// Use the Beeper JWT token to get a proper Matrix access token
+	// Get Matrix credentials from Beeper JWT
 	matrixLogin, err := beeperapi.GetMatrixTokenFromJWT(b.Token)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get Matrix access token from Beeper JWT: %w", err)
 	}
 
-	// Cache the Matrix token for future use
+	// Cache the Matrix credentials
 	b.MatrixToken = matrixLogin.AccessToken
 	b.MatrixUserID = matrixLogin.UserID
 
-	// Create Matrix client with the proper access token
-	userID := id.UserID(matrixLogin.UserID)
-	client, err := mautrix.NewClient(matrixHost, userID, matrixLogin.AccessToken)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create Matrix client: %w", err)
+	// Use a deterministic device ID for consistency with crypto store
+	// This ensures the same device ID is used across sessions for E2EE
+	deterministic_device_id := "MATRIXARCH"
+	b.MatrixDeviceID = deterministic_device_id
+
+	// Set the credentials on the client
+	client.AccessToken = matrixLogin.AccessToken
+	client.UserID = id.UserID(matrixLogin.UserID)
+	client.DeviceID = id.DeviceID(deterministic_device_id)
+
+	// Save updated credentials to file
+	if err := b.SaveCredentialsToFile(); err != nil {
+		fmt.Printf("Warning: Failed to save updated credentials: %v\n", err)
 	}
 
-	// Test the connection
-	whoamiResp, err := client.Whoami(context.Background())
-	if err != nil {
-		return nil, fmt.Errorf("failed to verify Matrix connection: %w", err)
-	}
-
-	fmt.Printf("Matrix connection verified. User ID: %s\n", whoamiResp.UserID)
+	fmt.Printf("Matrix credentials obtained. User ID: %s, Device ID: %s\n", client.UserID, client.DeviceID)
 	return client, nil
 }
 
@@ -216,7 +207,6 @@ func (b *BeeperAuth) SaveCredentials() {
 	}
 	if b.Whoami != nil {
 		os.Setenv("BEEPER_USERNAME", b.Whoami.UserInfo.Username)
-		os.Setenv("MATRIX_USER", fmt.Sprintf("@%s:%s", b.Whoami.UserInfo.Username, b.BaseDomain))
 	}
 
 	// Save to file (for persistent storage)
@@ -287,12 +277,13 @@ func (b *BeeperAuth) SaveCredentialsToFile() error {
 	}
 
 	creds := BeeperCredentials{
-		BaseDomain:   b.BaseDomain,
-		Email:        b.Email,
-		Token:        b.Token,
-		Whoami:       b.Whoami,
-		MatrixToken:  b.MatrixToken,
-		MatrixUserID: b.MatrixUserID,
+		BaseDomain:     b.BaseDomain,
+		Email:          b.Email,
+		Token:          b.Token,
+		Whoami:         b.Whoami,
+		MatrixToken:    b.MatrixToken,
+		MatrixUserID:   b.MatrixUserID,
+		MatrixDeviceID: b.MatrixDeviceID,
 	}
 
 	if b.Whoami != nil {
@@ -348,6 +339,7 @@ func (b *BeeperAuth) LoadCredentialsFromFile() bool {
 	b.Whoami = creds.Whoami
 	b.MatrixToken = creds.MatrixToken
 	b.MatrixUserID = creds.MatrixUserID
+	b.MatrixDeviceID = creds.MatrixDeviceID
 
 	fmt.Printf("Loaded credentials for %s from file\n", creds.Email)
 	return true
@@ -360,6 +352,7 @@ func (b *BeeperAuth) clearInvalidCredentials() {
 	b.Whoami = nil
 	b.MatrixToken = ""
 	b.MatrixUserID = ""
+	b.MatrixDeviceID = ""
 
 	// Clear environment variables
 	os.Unsetenv("BEEPER_TOKEN")
@@ -385,6 +378,11 @@ func (b *BeeperAuth) ClearCredentials() error {
 
 	fmt.Println("All Beeper credentials cleared")
 	return nil
+}
+
+// GetMatrixDeviceID returns the cached Matrix device ID
+func (b *BeeperAuth) GetMatrixDeviceID() string {
+	return b.MatrixDeviceID
 }
 
 // PerformBeeperLogin performs Beeper authentication with the given domain

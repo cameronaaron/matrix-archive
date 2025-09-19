@@ -26,7 +26,7 @@ type DatabaseInterface interface {
 	// Utility operations
 	CreateTables(ctx context.Context) error
 	Migrate(ctx context.Context) error
-	
+
 	// Analytics operations (for advanced analytics)
 	ExecuteQuery(ctx context.Context, query string, args ...interface{}) ([]map[string]interface{}, error)
 }

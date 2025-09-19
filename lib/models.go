@@ -164,5 +164,3 @@ func (f *MessageFilter) ToSQL() (string, []interface{}) {
 
 	return strings.Join(conditions, " AND "), args
 }
-
-

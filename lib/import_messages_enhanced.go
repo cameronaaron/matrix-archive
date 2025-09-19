@@ -29,12 +29,10 @@ type EnhancedMatrixClient struct {
 	backoffTime   time.Duration
 }
 
-// NewEnhancedMatrixClient creates a new enhanced Matrix client
-func NewEnhancedMatrixClient(homeserverURL string, userID id.UserID, accessToken string, db DatabaseInterface) (*EnhancedMatrixClient, error) {
-	// Create base mautrix client
-	client, err := mautrix.NewClient(homeserverURL, userID, accessToken)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create mautrix client: %w", err)
+// NewEnhancedMatrixClient creates a new enhanced Matrix client from an existing client
+func NewEnhancedMatrixClient(client *mautrix.Client, db DatabaseInterface) (*EnhancedMatrixClient, error) {
+	if client == nil {
+		return nil, fmt.Errorf("client cannot be nil")
 	}
 
 	// Configure built-in rate limiting and retries
@@ -42,17 +40,26 @@ func NewEnhancedMatrixClient(homeserverURL string, userID id.UserID, accessToken
 	client.DefaultHTTPBackoff = 2 * time.Second
 	client.IgnoreRateLimit = false // Use mautrix built-in rate limiting
 
-	// Create state store for room metadata caching
-	stateStore := mautrix.NewMemoryStateStore()
-	client.StateStore = stateStore
+	// Create state store for room metadata caching if not already set
+	if client.StateStore == nil {
+		stateStore := mautrix.NewMemoryStateStore()
+		client.StateStore = stateStore
+	}
 
 	enhanced := &EnhancedMatrixClient{
 		Client:        client,
 		db:            db,
-		stateStore:    stateStore,
+		stateStore:    client.StateStore,
 		enableRetries: true,
 		maxRetries:    3,
 		backoffTime:   2 * time.Second,
+	}
+
+	// Check if the client has crypto enabled
+	if client.Crypto != nil {
+		log.Printf("Enhanced client using crypto-enabled Matrix client")
+	} else {
+		log.Printf("Enhanced client using non-crypto Matrix client")
 	}
 
 	return enhanced, nil
@@ -203,6 +210,9 @@ func (e *EnhancedMatrixClient) convertEventToMessageEnhanced(evt *event.Event, r
 	// Use mautrix built-in content parsing
 	var content map[string]interface{}
 
+	log.Printf("DEBUG: Processing event %s of type %s", evt.ID, evt.Type)
+	log.Printf("DEBUG: Raw content: %+v", evt.Content.Raw)
+
 	// Parse event content using mautrix built-in parsers
 	switch evt.Type {
 	case event.EventMessage:
@@ -212,6 +222,8 @@ func (e *EnhancedMatrixClient) convertEventToMessageEnhanced(evt *event.Event, r
 				"msgtype": msgContent.MsgType,
 				"body":    msgContent.Body,
 			}
+
+			log.Printf("DEBUG: Parsed message content - msgtype: %s, body: %s", msgContent.MsgType, msgContent.Body)
 
 			// Add formatted body if present
 			if msgContent.FormattedBody != "" {
@@ -231,6 +243,7 @@ func (e *EnhancedMatrixClient) convertEventToMessageEnhanced(evt *event.Event, r
 			}
 		} else {
 			// Fallback to raw content
+			log.Printf("DEBUG: Failed to parse message content, using raw: %+v", evt.Content.Raw)
 			content = evt.Content.Raw
 		}
 
@@ -249,9 +262,79 @@ func (e *EnhancedMatrixClient) convertEventToMessageEnhanced(evt *event.Event, r
 		}
 
 	case event.EventEncrypted:
-		// For encrypted events, store the raw encrypted content
-		// In a full implementation, we'd decrypt using mautrix crypto
-		content = evt.Content.Raw
+		// For encrypted events, we need to explicitly decrypt them
+		// The cryptohelper doesn't automatically decrypt historical events
+		if e.Client.Crypto != nil {
+			log.Printf("DEBUG: Attempting to decrypt encrypted event %s", evt.ID)
+
+			// Parse the event content manually first
+			err := evt.Content.ParseRaw(evt.Type)
+			if err != nil {
+				log.Printf("DEBUG: Failed to parse encrypted event content: %v", err)
+			} else {
+				log.Printf("DEBUG: Successfully parsed event content")
+			}
+
+			// Try to decrypt the event using the crypto helper
+			decryptedEvt, err := e.Client.Crypto.Decrypt(context.Background(), evt)
+			if err != nil {
+				log.Printf("DEBUG: Failed to decrypt event %s: %v", evt.ID, err)
+			} else if decryptedEvt != nil {
+				log.Printf("DEBUG: Successfully decrypted event %s", evt.ID)
+				// Use the decrypted event content
+				if msgContent, ok := decryptedEvt.Content.Parsed.(*event.MessageEventContent); ok {
+					content = map[string]interface{}{
+						"msgtype": msgContent.MsgType,
+						"body":    msgContent.Body,
+					}
+					if msgContent.FormattedBody != "" {
+						content["formatted_body"] = msgContent.FormattedBody
+						content["format"] = msgContent.Format
+					}
+					log.Printf("DEBUG: Decrypted message content - msgtype: %s, body: %s", msgContent.MsgType, msgContent.Body)
+				} else {
+					// Try to parse the decrypted content directly
+					if body, ok := decryptedEvt.Content.Raw["body"].(string); ok {
+						content = map[string]interface{}{
+							"msgtype": decryptedEvt.Content.Raw["msgtype"],
+							"body":    body,
+						}
+						if formattedBody, exists := decryptedEvt.Content.Raw["formatted_body"]; exists {
+							content["formatted_body"] = formattedBody
+							content["format"] = decryptedEvt.Content.Raw["format"]
+						}
+						log.Printf("DEBUG: Decrypted message from raw content - body: %s", body)
+					} else {
+						// Still couldn't parse decrypted content, fall back to encrypted placeholder
+						content = map[string]interface{}{
+							"msgtype":    "m.text",
+							"body":       "[Encrypted message - decryption not available]",
+							"algorithm":  evt.Content.Raw["algorithm"],
+							"session_id": evt.Content.Raw["session_id"],
+						}
+						log.Printf("DEBUG: Decrypted event but couldn't parse content")
+					}
+				}
+			} else {
+				// Decryption failed, use encrypted placeholder
+				content = map[string]interface{}{
+					"msgtype":    "m.text",
+					"body":       "[Encrypted message - decryption not available]",
+					"algorithm":  evt.Content.Raw["algorithm"],
+					"session_id": evt.Content.Raw["session_id"],
+				}
+				log.Printf("DEBUG: Event decryption returned nil")
+			}
+		} else {
+			// No crypto helper available, use encrypted placeholder
+			content = map[string]interface{}{
+				"msgtype":    "m.text",
+				"body":       "[Encrypted message - decryption not available]",
+				"algorithm":  evt.Content.Raw["algorithm"],
+				"session_id": evt.Content.Raw["session_id"],
+			}
+			log.Printf("DEBUG: No crypto helper available for decryption")
+		}
 
 	default:
 		// For other events, use raw content
@@ -272,8 +355,6 @@ func (e *EnhancedMatrixClient) convertEventToMessageEnhanced(evt *event.Event, r
 
 	return message, nil
 }
-
-
 
 // DownloadMedia downloads media using mautrix built-in media functionality
 func (e *EnhancedMatrixClient) DownloadMedia(ctx context.Context, mxcURL string) ([]byte, error) {

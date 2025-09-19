@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"maunium.net/go/mautrix"
-	"maunium.net/go/mautrix/id"
 )
 
 var (
@@ -17,26 +16,17 @@ var (
 	beeperAuth   *BeeperAuth
 )
 
-// GetMatrixClient returns a connected Matrix client
+// GetMatrixClient returns a connected Matrix client using Beeper authentication
 func GetMatrixClient() (*mautrix.Client, error) {
 	if matrixClient != nil {
 		return matrixClient, nil
 	}
 
-	// Check if we should use Beeper authentication
-	useBeeperAuth := os.Getenv("USE_BEEPER_AUTH") == "true" ||
-		os.Getenv("BEEPER_TOKEN") != "" ||
-		os.Getenv("BEEPER_EMAIL") != ""
-
-	if useBeeperAuth {
-		return getBeeperMatrixClient()
-	}
-
-	return getStandardMatrixClient()
+	return GetBeeperMatrixClient()
 }
 
-// getBeeperMatrixClient creates a Matrix client using Beeper authentication
-func getBeeperMatrixClient() (*mautrix.Client, error) {
+// GetBeeperMatrixClient creates a Matrix client using Beeper authentication with crypto
+func GetBeeperMatrixClient() (*mautrix.Client, error) {
 	baseDomain := os.Getenv("BEEPER_DOMAIN")
 	if baseDomain == "" {
 		baseDomain = "beeper.com"
@@ -57,59 +47,54 @@ func getBeeperMatrixClient() (*mautrix.Client, error) {
 		beeperAuth.SaveCredentials()
 	}
 
-	client, err := beeperAuth.GetMatrixClient()
+	// Get Matrix client with crypto using the helper approach
+	client, err := beeperAuth.GetMatrixClientWithCrypto()
 	if err != nil {
-		return nil, fmt.Errorf("failed to create Beeper Matrix client: %w", err)
+		// If this fails due to expired token, clear credentials and try login again
+		if strings.Contains(err.Error(), "expired_token") || strings.Contains(err.Error(), "M_FORBIDDEN") {
+			fmt.Println("Beeper credentials expired. Re-authenticating...")
+			beeperAuth.ClearCredentials()
+
+			// Perform fresh login
+			if err := beeperAuth.Login(); err != nil {
+				return nil, fmt.Errorf("Beeper re-authentication failed: %w", err)
+			}
+			beeperAuth.SaveCredentials()
+
+			// Try again with fresh credentials
+			client, err = beeperAuth.GetMatrixClientWithCrypto()
+			if err != nil {
+				return nil, fmt.Errorf("failed to create Beeper Matrix client after re-auth: %w", err)
+			}
+		} else {
+			return nil, fmt.Errorf("failed to create Beeper Matrix client: %w", err)
+		}
 	}
+
+	// Create crypto manager with database path
+	// Use a default crypto database path
+	cryptoDbPath := "./crypto_store"
+	cryptoManager, err := NewCryptoManager(client, cryptoDbPath)
+	if err != nil {
+		log.Printf("Warning: Failed to initialize crypto: %v", err)
+		// Continue without crypto rather than failing completely
+	} else {
+		// Start the crypto manager
+		ctx := context.Background()
+		if err := cryptoManager.Start(ctx); err != nil {
+			log.Printf("Warning: Failed to start crypto manager: %v", err)
+		} else {
+			// Assign the crypto manager (which implements CryptoHelper) to the client
+			client.Crypto = cryptoManager
+			log.Printf("Crypto-enabled Matrix client initialized successfully")
+		}
+	}
+
+	// Always save credentials after successfully getting a Matrix client
+	beeperAuth.SaveCredentials()
 
 	matrixClient = client
 	log.Printf("Logged in via Beeper as %s", beeperAuth.Whoami.UserInfo.Username)
-	return matrixClient, nil
-}
-
-// getStandardMatrixClient creates a Matrix client using traditional username/password
-func getStandardMatrixClient() (*mautrix.Client, error) {
-	matrixUser := os.Getenv("MATRIX_USER")
-	matrixPassword := os.Getenv("MATRIX_PASSWORD")
-	matrixHost := os.Getenv("MATRIX_HOST")
-
-	if matrixUser == "" {
-		return nil, fmt.Errorf("MATRIX_USER environment variable is required")
-	}
-	if matrixPassword == "" {
-		return nil, fmt.Errorf("MATRIX_PASSWORD environment variable is required")
-	}
-	if matrixHost == "" {
-		matrixHost = "https://matrix.org"
-	}
-
-	fmt.Printf("Signing into %s...\n", matrixHost)
-
-	// Create Matrix client
-	userID := id.UserID(matrixUser)
-	client, err := mautrix.NewClient(matrixHost, userID, "")
-	if err != nil {
-		return nil, fmt.Errorf("failed to create Matrix client: %w", err)
-	}
-
-	// Login
-	resp, err := client.Login(context.Background(), &mautrix.ReqLogin{
-		Type: mautrix.AuthTypePassword,
-		Identifier: mautrix.UserIdentifier{
-			Type: mautrix.IdentifierTypeUser,
-			User: matrixUser,
-		},
-		Password: matrixPassword,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to login to Matrix: %w", err)
-	}
-
-	client.AccessToken = resp.AccessToken
-	client.UserID = resp.UserID
-	matrixClient = client
-
-	log.Printf("Logged in as %s", resp.UserID)
 	return matrixClient, nil
 }
 
@@ -135,17 +120,12 @@ func GetDownloadURL(mxcURL string) (string, error) {
 	return downloadURL, nil
 }
 
-// GetMatrixRoomIDs returns the configured room IDs from environment
-func GetMatrixRoomIDs() ([]string, error) {
-	roomIDsEnv := os.Getenv("MATRIX_ROOM_IDS")
-	if roomIDsEnv == "" {
-		return nil, fmt.Errorf("MATRIX_ROOM_IDS environment variable is required")
+// GetMatrixDeviceID returns the device ID from the current beeper auth
+func GetMatrixDeviceID() string {
+	if beeperAuth != nil {
+		return beeperAuth.GetMatrixDeviceID()
 	}
-
-	roomIDs := strings.Split(roomIDsEnv, ",")
-	for i, roomID := range roomIDs {
-		roomIDs[i] = strings.TrimSpace(roomID)
-	}
-
-	return roomIDs, nil
+	return ""
 }
+
+
